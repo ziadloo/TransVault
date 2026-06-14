@@ -143,6 +143,11 @@ def check_queue_and_process():
             
     db = SessionLocal()
     try:
+        # Check if queue has been globally halted by user
+        halt_setting = db.query(Setting).filter(Setting.key == "queue_halted").first()
+        if halt_setting and halt_setting.value.lower() == "true":
+            return
+            
         # Check scheduler window
         if not is_within_transcode_window(db):
             return

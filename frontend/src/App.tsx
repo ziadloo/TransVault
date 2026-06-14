@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
   RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
-  ArrowRight, Sliders, Volume2, Languages
+  ArrowRight, Sliders, Volume2, Languages, AlertCircle
 } from 'lucide-react';
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting } from './api';
@@ -51,6 +51,7 @@ function App() {
   const [diskSafetyConfig, setDiskSafetyConfig] = useState({
     min_free_gb: 50
   });
+  const [queueHalted, setQueueHalted] = useState(false);
 
   // Load everything on startup
   const fetchData = async () => {
@@ -73,6 +74,9 @@ function App() {
 
       const disk = allSettings.find(s => s.key === 'disk_safety_config');
       if (disk) setDiskSafetyConfig(JSON.parse(disk.value));
+
+      const haltedSetting = allSettings.find(s => s.key === 'queue_halted');
+      if (haltedSetting) setQueueHalted(haltedSetting.value === 'true');
 
       // Fetch movies based on active view
       if (activeTab === 'library') {
@@ -217,6 +221,26 @@ function App() {
     }
   };
 
+  const handleToggleHalt = async () => {
+    try {
+      const newHaltState = !queueHalted;
+      await api.updateSetting('queue_halted', newHaltState.toString());
+      setQueueHalted(newHaltState);
+      fetchData();
+    } catch (err) {
+      alert('Failed to toggle queue state');
+    }
+  };
+
+  const handleResetMovie = async (id: number) => {
+    try {
+      await fetch(`${import.meta.env.DEV ? 'http://localhost:8080/api' : '/api'}/movies/${id}/reset`, { method: 'POST' });
+      fetchData();
+    } catch (err) {
+      alert('Reset status failed');
+    }
+  };
+
   const handleDeleteProfile = async (id: number) => {
     if (window.confirm('Are you sure you want to delete this profile?')) {
       try {
@@ -296,35 +320,62 @@ function App() {
             </div>
           </div>
           
-          <nav className="flex space-x-1">
-            {[
-              { id: 'dashboard', label: 'Dashboard', icon: Database },
-              { id: 'approvals', label: 'Approvals', icon: CheckCircle, badge: stats?.pending_approval },
-              { id: 'library', label: 'Library', icon: Film },
-              { id: 'profiles', label: 'Profiles', icon: Sliders },
-              { id: 'settings', label: 'Settings', icon: Settings },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as any)}
-                className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                  activeTab === tab.id 
-                    ? 'bg-zinc-800 text-white shadow-inner' 
-                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                }`}
-              >
-                <tab.icon className={`h-4 w-4 ${activeTab === tab.id ? 'text-violet-400' : 'text-zinc-500'}`} />
-                <span>{tab.label}</span>
-                {tab.badge && tab.badge > 0 ? (
-                  <span className="flex h-5 min-w-5 px-1 items-center justify-center text-[10px] font-bold bg-violet-600 text-white rounded-full">
-                    {tab.badge}
-                  </span>
-                ) : null}
-              </button>
-            ))}
-          </nav>
+          <div className="flex items-center space-x-4">
+            <nav className="flex space-x-1">
+              {[
+                { id: 'dashboard', label: 'Dashboard', icon: Database },
+                { id: 'approvals', label: 'Approvals', icon: CheckCircle, badge: stats?.pending_approval },
+                { id: 'library', label: 'Library', icon: Film },
+                { id: 'profiles', label: 'Profiles', icon: Sliders },
+                { id: 'settings', label: 'Settings', icon: Settings },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                    activeTab === tab.id 
+                      ? 'bg-zinc-800 text-white shadow-inner' 
+                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                  }`}
+                >
+                  <tab.icon className={`h-4 w-4 ${activeTab === tab.id ? 'text-violet-400' : 'text-zinc-500'}`} />
+                  <span>{tab.label}</span>
+                  {tab.badge && tab.badge > 0 ? (
+                    <span className="flex h-5 min-w-5 px-1 items-center justify-center text-[10px] font-bold bg-violet-600 text-white rounded-full">
+                      {tab.badge}
+                    </span>
+                  ) : null}
+                </button>
+              ))}
+            </nav>
+
+            <button
+              onClick={handleToggleHalt}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
+                queueHalted 
+                  ? 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border-rose-800' 
+                  : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-800'
+              }`}
+            >
+              <span className={`h-2 w-2 rounded-full ${queueHalted ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+              <span>{queueHalted ? 'Queue Halted' : 'Queue Active'}</span>
+            </button>
+          </div>
         </div>
       </header>
+
+      {queueHalted && (
+        <div className="bg-rose-950/40 border-b border-rose-900/60 py-2.5 text-center text-xs text-rose-300 font-bold flex items-center justify-center space-x-2">
+          <AlertCircle className="h-4 w-4 text-rose-400" />
+          <span>The Transvault Queue is currently halted. No new transcoding processes will start until resumed.</span>
+          <button 
+            onClick={handleToggleHalt} 
+            className="underline ml-2 text-rose-400 hover:text-white transition cursor-pointer"
+          >
+            Resume Queue
+          </button>
+        </div>
+      )}
 
       {/* WORKSPACE CONTENT */}
       <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -764,6 +815,16 @@ function App() {
                                 </button>
                               )}
                               
+                              {['transcoding', 'queued', 'manual_matching', 'skipped', 'pending_approval'].includes(movie.status) && (
+                                <button
+                                  onClick={() => handleResetMovie(movie.id)}
+                                  className="px-2.5 py-1 bg-zinc-850 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-zinc-200 rounded font-semibold text-[10px]"
+                                  title="Reset status back to detected"
+                                >
+                                  Reset
+                                </button>
+                              )}
+
                               {['detected', 'queued', 'manual_matching'].includes(movie.status) && (
                                 <button
                                   onClick={() => handleSkip(movie.id)}

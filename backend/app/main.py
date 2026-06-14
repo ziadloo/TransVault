@@ -131,6 +131,7 @@ def seed_defaults(db: Session):
     # 2. Seed Settings
     default_settings = {
         "auto_queue": "true",
+        "queue_halted": "false",
         "scheduler_config": json.dumps({
             "enabled": False,
             "start_time": "00:00",
@@ -153,6 +154,14 @@ def seed_defaults(db: Session):
 def startup_event():
     db = SessionLocal()
     try:
+        # Reset stuck transcoding jobs on startup to recover safely
+        stuck_movies = db.query(Movie).filter(Movie.status == "transcoding").all()
+        for m in stuck_movies:
+            m.status = "detected"
+        db.commit()
+        if stuck_movies:
+            logger.info(f"Reset {len(stuck_movies)} stuck transcoding job(s) to 'detected' state.")
+            
         seed_defaults(db)
         init_scheduler()
     finally:
@@ -255,6 +264,19 @@ def skip_movie(movie_id: int, db: Session = Depends(get_db)):
     movie.status = "skipped"
     db.commit()
     return {"message": "Movie marked as skipped."}
+
+@app.post("/api/movies/{movie_id}/reset")
+def reset_movie_status(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+        
+    movie.status = "detected"
+    movie.transcode_started_at = None
+    movie.transcode_completed_at = None
+    movie.error_message = None
+    db.commit()
+    return {"message": "Movie status reset to detected."}
 
 @app.patch("/api/movies/{movie_id}/match-profile")
 def match_profile_manually(movie_id: int, profile_id: int, db: Session = Depends(get_db)):
