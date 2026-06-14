@@ -670,15 +670,37 @@ function App() {
         {/* STATS OVERVIEW HEADER */}
         {stats && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
-              <div className="flex items-center justify-between text-zinc-500 mb-2">
-                <span className="text-xs uppercase tracking-wider font-semibold">Total Library</span>
-                <Film className="h-4 w-4" />
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-zinc-500 mb-2">
+                  <span className="text-xs uppercase tracking-wider font-semibold">Total Library</span>
+                  <Film className="h-4 w-4 text-violet-400" />
+                </div>
+                <div className="text-2xl font-bold font-sans">{stats.total_movies} <span className="text-xs text-zinc-500 font-normal">videos</span></div>
               </div>
-              <div className="text-2xl font-bold">{stats.total_movies}</div>
-              <div className="text-xs text-zinc-400 mt-1 flex items-center space-x-1.5">
-                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
-                <span>Found files</span>
+              
+              <div className="mt-4 pt-3 border-t border-zinc-850/80 space-y-1 text-[11px] text-zinc-400 font-mono">
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+                    <span>Transcoded:</span>
+                  </span>
+                  <strong className="text-emerald-400">{stats.transcoded_movies}</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+                    <span>In Queue:</span>
+                  </span>
+                  <strong className="text-blue-400">{stats.queued}</strong>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-rose-500"></span>
+                    <span>Manual Match:</span>
+                  </span>
+                  <strong className="text-rose-400">{stats.manual_matching}</strong>
+                </div>
               </div>
             </div>
             
