@@ -1,0 +1,31 @@
+# Python virtual environments
+.venv/
+venv/
+ENV/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Databases
+*.db
+*.sqlite
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Local configuration
+.env
+config/
+library/
+vault/
+workdir/

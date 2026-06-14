@@ -1,0 +1,377 @@
+import os
+import json
+import logging
+from fastapi import FastAPI, Depends, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+from sqlalchemy.orm import Session
+from typing import List, Optional
+
+from backend.app.config import settings
+from backend.app.database import engine, Base, get_db
+from backend.app.models import Movie, Profile, Setting
+from backend.app.schemas import (
+    MovieResponse, ProfileResponse, ProfileCreate, ProfileUpdate,
+    SettingResponse, SettingUpdate, DashboardStats
+)
+from backend.app.scheduler import init_scheduler, shutdown_scheduler, active_job, scan_library
+from backend.app.transcoder import approve_transcode, reject_transcode
+
+# Initialize logger
+logger = logging.getLogger("transvault.main")
+logging.basicConfig(level=logging.INFO)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+app = FastAPI(title=settings.app_name, version="1.0.0")
+
+# CORS middleware for development
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+def seed_defaults(db: Session):
+    """Seed system default profiles and settings if they don't exist."""
+    # 1. Seed Profiles
+    if db.query(Profile).count() == 0:
+        default_profiles = [
+            Profile(
+                name="Intel QSV AV1 10-bit HDR (4K/8K)",
+                description="High-efficiency AV1 hardware transcode for Intel Arc/13th+ Gen GPUs. Keeps HDR/Dolby Vision.",
+                resolution_min_width=3840,
+                resolution_max_width=99999,
+                hdr_matching="hdr_only",
+                video_codec="av1_qsv",
+                video_quality_type="crf",
+                video_quality_value=23,
+                ffmpeg_preset="medium",
+                audio_languages="eng,spa,fre,ger",
+                audio_codec="copy",
+                subtitle_languages="eng,spa,fre,ger",
+                strip_image_subs=True,
+                is_system=True
+            ),
+            Profile(
+                name="Intel QSV AV1 8-bit SDR (1080p+)",
+                description="AV1 hardware transcode for SDR content. Highly efficient space savings.",
+                resolution_min_width=1920,
+                resolution_max_width=3839,
+                hdr_matching="any",
+                video_codec="av1_qsv",
+                video_quality_type="crf",
+                video_quality_value=21,
+                ffmpeg_preset="medium",
+                audio_languages="eng,spa,fre,ger",
+                audio_codec="copy",
+                subtitle_languages="eng,spa,fre,ger",
+                strip_image_subs=True,
+                is_system=True
+            ),
+            Profile(
+                name="Intel QSV HEVC 8-bit SDR (1080p)",
+                description="HEVC hardware transcode for Intel GPUs. Broad device compatibility.",
+                resolution_min_width=1280,
+                resolution_max_width=1919,
+                hdr_matching="any",
+                video_codec="hevc_qsv",
+                video_quality_type="crf",
+                video_quality_value=20,
+                ffmpeg_preset="medium",
+                audio_languages="eng",
+                audio_codec="copy",
+                subtitle_languages="eng",
+                strip_image_subs=True,
+                is_system=True
+            ),
+            Profile(
+                name="SVT-AV1 Software Transcode (Universal)",
+                description="CPU-based AV1 transcoding. Slower but works on any hardware and offers extreme savings.",
+                resolution_min_width=0,
+                resolution_max_width=99999,
+                hdr_matching="any",
+                video_codec="libsvtav1",
+                video_quality_type="crf",
+                video_quality_value=24,
+                ffmpeg_preset="6",  # SVT-AV1 uses numeric speed presets 1-13. 6 is standard.
+                audio_languages="eng",
+                audio_codec="aac",
+                audio_bitrate="256k",
+                subtitle_languages="eng",
+                strip_image_subs=True,
+                is_system=True
+            ),
+            Profile(
+                name="H.264 CPU Fallback (Compatibility)",
+                description="Standard H.264 software transcoding. Maximum compatibility with older playback hardware.",
+                resolution_min_width=0,
+                resolution_max_width=1279,
+                hdr_matching="any",
+                video_codec="libx264",
+                video_quality_type="crf",
+                video_quality_value=18,
+                ffmpeg_preset="medium",
+                audio_languages="eng",
+                audio_codec="aac",
+                audio_bitrate="192k",
+                subtitle_languages="eng",
+                strip_image_subs=True,
+                is_system=True
+            ),
+        ]
+        db.add_all(default_profiles)
+        db.commit()
+        logger.info("Default profiles seeded.")
+
+    # 2. Seed Settings
+    default_settings = {
+        "auto_queue": "true",
+        "scheduler_config": json.dumps({
+            "enabled": False,
+            "start_time": "00:00",
+            "end_time": "08:00"
+        }),
+        "disk_safety_config": json.dumps({
+            "min_free_gb": 50
+        })
+    }
+    
+    for key, value in default_settings.items():
+        existing = db.query(Setting).filter(Setting.key == key).first()
+        if not existing:
+            setting = Setting(key=key, value=value)
+            db.add(setting)
+            db.commit()
+    logger.info("Default settings seeded.")
+
+@app.on_event("startup")
+def startup_event():
+    db = SessionLocal()
+    try:
+        seed_defaults(db)
+        init_scheduler()
+    finally:
+        db.close()
+
+@app.on_event("shutdown")
+def shutdown_event():
+    shutdown_scheduler()
+
+# ==================== API ROUTES ====================
+
+@app.get("/api/dashboard/stats", response_model=DashboardStats)
+def get_dashboard_stats(db: Session = Depends(get_db)):
+    total = db.query(Movie).count()
+    transcoded = db.query(Movie).filter(Movie.status == "approved").count()
+    pending = db.query(Movie).filter(Movie.status == "pending_approval").count()
+    manual = db.query(Movie).filter(Movie.status == "manual_matching").count()
+    queued = db.query(Movie).filter(Movie.status == "queued").count()
+    transcoding = db.query(Movie).filter(Movie.status == "transcoding").count()
+    
+    # Calculate savings
+    approved_movies = db.query(Movie).filter(Movie.status == "approved").all()
+    space_saved = 0
+    for m in approved_movies:
+        if m.transcoded_size and m.file_size > m.transcoded_size:
+            space_saved += (m.file_size - m.transcoded_size)
+            
+    # GPU status check
+    gpu_status = {"detected": False, "name": "N/A", "temp": "N/A", "utilization": "N/A"}
+    try:
+        # Check Intel GPU status via intel_gpu_top or VAAPI
+        if os.path.exists("/dev/dri"):
+            gpu_status["detected"] = True
+            gpu_status["name"] = "Intel Graphics (/dev/dri)"
+    except Exception:
+        pass
+        
+    # Build active transcode job details
+    active_details = {}
+    if active_job["movie_id"]:
+        m = db.query(Movie).filter(Movie.id == active_job["movie_id"]).first()
+        if m:
+            active_details = {
+                "id": m.id,
+                "filename": m.filename,
+                "progress": active_job["progress"],
+                "fps": active_job["fps"],
+                "speed": active_job["speed"],
+                "profile_name": m.matched_profile.name if m.matched_profile else "Dynamic Match"
+            }
+
+    return {
+        "total_movies": total,
+        "transcoded_movies": transcoded,
+        "pending_approval": pending,
+        "manual_matching": manual,
+        "queued": queued,
+        "transcoding": transcoding,
+        "space_saved_bytes": space_saved,
+        "gpu_status": {**gpu_status, "active_job": active_details}
+    }
+
+# --- Movies Endpoints ---
+
+@app.get("/api/movies", response_model=List[MovieResponse])
+def list_movies(
+    status: Optional[str] = None,
+    limit: int = 50,
+    offset: int = 0,
+    db: Session = Depends(get_db)
+):
+    query = db.query(Movie)
+    if status:
+        query = query.filter(Movie.status == status)
+    return query.order_by(Movie.added_at.desc()).offset(offset).limit(limit).all()
+
+@app.post("/api/movies/scan")
+def trigger_scan():
+    """Triggers an immediate library scanning job."""
+    from threading import Thread
+    Thread(target=scan_library, daemon=True).start()
+    return {"message": "Scan triggered."}
+
+@app.post("/api/movies/{movie_id}/queue")
+def queue_movie(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+        
+    movie.status = "queued"
+    db.commit()
+    return {"message": "Movie successfully queued for transcoding."}
+
+@app.post("/api/movies/{movie_id}/skip")
+def skip_movie(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+        
+    movie.status = "skipped"
+    db.commit()
+    return {"message": "Movie marked as skipped."}
+
+@app.patch("/api/movies/{movie_id}/match-profile")
+def match_profile_manually(movie_id: int, profile_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+        
+    profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+        
+    movie.matched_profile_id = profile.id
+    db.commit()
+    return {"message": "Profile matched successfully."}
+
+@app.post("/api/movies/{movie_id}/approve")
+def approve_movie(movie_id: int, db: Session = Depends(get_db)):
+    try:
+        approve_transcode(db, movie_id)
+        return {"message": "Transcode approved successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/api/movies/{movie_id}/reject")
+def reject_movie(movie_id: int, db: Session = Depends(get_db)):
+    try:
+        reject_transcode(db, movie_id)
+        return {"message": "Transcode rejected successfully."}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.get("/api/movies/{movie_id}/logs")
+def get_movie_logs(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+    return {"logs": movie.transcode_logs or "No logs available."}
+
+# --- Profiles Endpoints ---
+
+@app.get("/api/profiles", response_model=List[ProfileResponse])
+def list_profiles(db: Session = Depends(get_db)):
+    return db.query(Profile).all()
+
+@app.post("/api/profiles", response_model=ProfileResponse)
+def create_profile(profile: ProfileCreate, db: Session = Depends(get_db)):
+    existing = db.query(Profile).filter(Profile.name == profile.name).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Profile name already exists")
+        
+    db_profile = Profile(**profile.dict())
+    db.add(db_profile)
+    db.commit()
+    db.refresh(db_profile)
+    return db_profile
+
+@app.put("/api/profiles/{profile_id}", response_model=ProfileResponse)
+def update_profile(profile_id: int, profile: ProfileUpdate, db: Session = Depends(get_db)):
+    db_profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not db_profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if db_profile.is_system:
+        raise HTTPException(status_code=400, detail="System profiles cannot be modified")
+        
+    update_data = profile.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(db_profile, key, value)
+        
+    db.commit()
+    db.refresh(db_profile)
+    return db_profile
+
+@app.delete("/api/profiles/{profile_id}")
+def delete_profile(profile_id: int, db: Session = Depends(get_db)):
+    db_profile = db.query(Profile).filter(Profile.id == profile_id).first()
+    if not db_profile:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    if db_profile.is_system:
+        raise HTTPException(status_code=400, detail="System profiles cannot be deleted")
+        
+    # Nullify matching references in movies
+    db.query(Movie).filter(Movie.matched_profile_id == profile_id).update({Movie.matched_profile_id: None})
+    db.delete(db_profile)
+    db.commit()
+    return {"message": "Profile deleted successfully."}
+
+# --- Settings Endpoints ---
+
+@app.get("/api/settings", response_model=List[SettingResponse])
+def get_settings(db: Session = Depends(get_db)):
+    return db.query(Setting).all()
+
+@app.put("/api/settings/{key}")
+def update_setting(key: str, payload: SettingUpdate, db: Session = Depends(get_db)):
+    setting = db.query(Setting).filter(Setting.key == key).first()
+    if not setting:
+        raise HTTPException(status_code=404, detail="Setting key not found")
+        
+    setting.value = payload.value
+    db.commit()
+    return {"message": "Setting updated successfully."}
+
+# --- Serve Frontend (for Single-Container Production Build) ---
+
+# Check if front-end production build folder exists
+frontend_dist_path = "/home/mehran/Documents/GitHub/TransVault/frontend/dist"
+if os.path.exists(frontend_dist_path):
+    app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
+    
+    @app.get("/{full_path:path}")
+    def serve_frontend(full_path: str):
+        # Serve static assets if requested, otherwise serve index.html for React Router compatibility
+        asset_file = os.path.join(frontend_dist_path, full_path)
+        if full_path and os.path.exists(asset_file) and os.path.isfile(asset_file):
+            return FileResponse(asset_file)
+        return FileResponse(os.path.join(frontend_dist_path, "index.html"))
+else:
+    @app.get("/")
+    def read_root():
+        return {"message": "Welcome to TransVault Backend (Development Mode). Run frontend dev server for the UI."}

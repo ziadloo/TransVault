@@ -1,0 +1,1192 @@
+import React, { useState, useEffect } from 'react';
+import { 
+  Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
+  RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
+  ArrowRight, Sliders, Volume2, Languages
+} from 'lucide-react';
+import { api } from './api';
+import type { Movie, Profile, DashboardStats, Setting } from './api';
+
+function App() {
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'approvals' | 'library' | 'profiles' | 'settings'>('dashboard');
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [movies, setMovies] = useState<Movie[]>([]);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [_, setSettingsList] = useState<Setting[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [scanning, setScanning] = useState(false);
+  const [activeLogs, setActiveLogs] = useState<{ id: number; name: string; content: string } | null>(null);
+  
+  // Library filters
+  const [libFilter, setLibFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState<string>('');
+  
+  // Create Profile state
+  const [showCreateProfileModal, setShowCreateProfileModal] = useState(false);
+  const [newProfile, setNewProfile] = useState({
+    name: '',
+    description: '',
+    resolution_min_width: 0,
+    resolution_max_width: 99999,
+    hdr_matching: 'any' as 'any' | 'hdr_only' | 'sdr_only',
+    video_codec: 'av1_qsv',
+    video_quality_type: 'crf' as 'crf' | 'qp' | 'bitrate',
+    video_quality_value: 22,
+    ffmpeg_preset: 'medium',
+    audio_languages: 'eng',
+    audio_codec: 'copy',
+    audio_bitrate: '640k',
+    subtitle_languages: 'eng',
+    strip_image_subs: true,
+    custom_ffmpeg_args: ''
+  });
+
+  // Settings State
+  const [autoQueue, setAutoQueue] = useState(true);
+  const [schedulerConfig, setSchedulerConfig] = useState({
+    enabled: false,
+    start_time: '00:00',
+    end_time: '08:00'
+  });
+  const [diskSafetyConfig, setDiskSafetyConfig] = useState({
+    min_free_gb: 50
+  });
+
+  // Load everything on startup
+  const fetchData = async () => {
+    try {
+      const dashboardStats = await api.getStats();
+      setStats(dashboardStats);
+
+      const profileList = await api.getProfiles();
+      setProfiles(profileList);
+
+      const allSettings = await api.getSettings();
+      setSettingsList(allSettings);
+
+      // Parse settings into states
+      const autoQ = allSettings.find(s => s.key === 'auto_queue');
+      if (autoQ) setAutoQueue(autoQ.value === 'true');
+
+      const sched = allSettings.find(s => s.key === 'scheduler_config');
+      if (sched) setSchedulerConfig(JSON.parse(sched.value));
+
+      const disk = allSettings.find(s => s.key === 'disk_safety_config');
+      if (disk) setDiskSafetyConfig(JSON.parse(disk.value));
+
+      // Fetch movies based on active view
+      if (activeTab === 'library') {
+        const movieList = await api.getMovies();
+        setMovies(movieList);
+      } else if (activeTab === 'approvals') {
+        const pendingList = await api.getMovies('pending_approval');
+        setMovies(pendingList);
+      } else if (activeTab === 'dashboard') {
+        // Fetch recently transcoding or pending
+        const allList = await api.getMovies();
+        setMovies(allList);
+      }
+
+      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching data:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [activeTab]);
+
+  // Polling for live active job stats (every 3 seconds)
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        const dashboardStats = await api.getStats();
+        setStats(dashboardStats);
+        
+        // If something is active, also refresh lists
+        if (dashboardStats.gpu_status.active_job || activeTab === 'dashboard' || activeTab === 'approvals') {
+          // Soft reload
+          const profileList = await api.getProfiles();
+          setProfiles(profileList);
+          
+          if (activeTab === 'library') {
+            const movieList = await api.getMovies();
+            setMovies(movieList);
+          } else if (activeTab === 'approvals') {
+            const pendingList = await api.getMovies('pending_approval');
+            setMovies(pendingList);
+          } else if (activeTab === 'dashboard') {
+            const allList = await api.getMovies();
+            setMovies(allList);
+          }
+        }
+      } catch (err) {
+        console.error('Polling error:', err);
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [activeTab]);
+
+  const handleScan = async () => {
+    setScanning(true);
+    try {
+      await api.scanLibrary();
+      setTimeout(() => {
+        setScanning(false);
+        fetchData();
+      }, 2000);
+    } catch (err) {
+      alert('Scanning failed');
+      setScanning(false);
+    }
+  };
+
+  const handleApprove = async (id: number) => {
+    try {
+      await api.approveMovie(id);
+      fetchData();
+    } catch (err) {
+      alert('Approval failed');
+    }
+  };
+
+  const handleReject = async (id: number) => {
+    try {
+      await api.rejectMovie(id);
+      fetchData();
+    } catch (err) {
+      alert('Rejection failed');
+    }
+  };
+
+  const handleQueue = async (id: number) => {
+    try {
+      await api.queueMovie(id);
+      fetchData();
+    } catch (err) {
+      alert('Queue failed');
+    }
+  };
+
+  const handleSkip = async (id: number) => {
+    try {
+      await api.skipMovie(id);
+      fetchData();
+    } catch (err) {
+      alert('Mark skip failed');
+    }
+  };
+
+  const handleManualProfileMatch = async (movieId: number, profileId: number) => {
+    try {
+      await api.matchProfile(movieId, profileId);
+      // Auto queue after matching
+      await api.queueMovie(movieId);
+      fetchData();
+    } catch (err) {
+      alert('Profile match failed');
+    }
+  };
+
+  const handleCreateProfile = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      await api.createProfile(newProfile);
+      setShowCreateProfileModal(false);
+      setNewProfile({
+        name: '',
+        description: '',
+        resolution_min_width: 0,
+        resolution_max_width: 99999,
+        hdr_matching: 'any',
+        video_codec: 'av1_qsv',
+        video_quality_type: 'crf',
+        video_quality_value: 22,
+        ffmpeg_preset: 'medium',
+        audio_languages: 'eng',
+        audio_codec: 'copy',
+        audio_bitrate: '640k',
+        subtitle_languages: 'eng',
+        strip_image_subs: true,
+        custom_ffmpeg_args: ''
+      });
+      fetchData();
+    } catch (err) {
+      alert('Failed to create profile');
+    }
+  };
+
+  const handleDeleteProfile = async (id: number) => {
+    if (window.confirm('Are you sure you want to delete this profile?')) {
+      try {
+        await api.deleteProfile(id);
+        fetchData();
+      } catch (err) {
+        alert('Failed to delete profile');
+      }
+    }
+  };
+
+  const handleSaveSettings = async () => {
+    try {
+      await api.updateSetting('auto_queue', autoQueue.toString());
+      await api.updateSetting('scheduler_config', JSON.stringify(schedulerConfig));
+      await api.updateSetting('disk_safety_config', JSON.stringify(diskSafetyConfig));
+      alert('Settings saved successfully!');
+      fetchData();
+    } catch (err) {
+      alert('Failed to save settings');
+    }
+  };
+
+  const viewLogs = async (movieId: number, filename: string) => {
+    try {
+      const data = await api.getMovieLogs(movieId);
+      setActiveLogs({ id: movieId, name: filename, content: data.logs });
+    } catch (err) {
+      alert('Failed to retrieve logs');
+    }
+  };
+
+  const formatBytes = (bytes: number, decimals = 2) => {
+    if (!bytes) return '0 Bytes';
+    const k = 1024;
+    const dm = decimals < 0 ? 0 : decimals;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+  };
+
+  const getStatusBadgeClass = (status: string) => {
+    switch (status) {
+      case 'detected': return 'bg-zinc-800 text-zinc-400 border border-zinc-700';
+      case 'queued': return 'bg-blue-950 text-blue-300 border border-blue-800';
+      case 'transcoding': return 'bg-amber-950 text-amber-300 border border-amber-800 animate-pulse';
+      case 'pending_approval': return 'bg-violet-950 text-violet-300 border border-violet-800 shadow-md shadow-violet-900/10';
+      case 'approved': return 'bg-emerald-950 text-emerald-300 border border-emerald-800';
+      case 'manual_matching': return 'bg-rose-950 text-rose-300 border border-rose-800';
+      case 'skipped': return 'bg-zinc-900 text-zinc-500 border border-zinc-800';
+      default: return 'bg-zinc-800 text-zinc-400';
+    }
+  };
+
+  // Filter movies for library tab
+  const filteredMovies = movies.filter(m => {
+    const matchesStatus = libFilter === 'all' || m.status === libFilter;
+    const matchesSearch = m.filename.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                          m.relative_path.toLowerCase().includes(searchQuery.toLowerCase());
+    return matchesStatus && matchesSearch;
+  });
+
+  return (
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-violet-500 selection:text-white">
+      {/* HEADER / NAVIGATION */}
+      <header className="border-b border-zinc-800 bg-zinc-900/60 backdrop-blur-md sticky top-0 z-40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="bg-gradient-to-tr from-violet-600 to-indigo-600 p-2 rounded-xl shadow-lg shadow-violet-950/40">
+              <Film className="h-6 w-6 text-white" />
+            </div>
+            <div>
+              <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
+                TransVault
+              </span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v1.0.0</span>
+            </div>
+          </div>
+          
+          <nav className="flex space-x-1">
+            {[
+              { id: 'dashboard', label: 'Dashboard', icon: Database },
+              { id: 'approvals', label: 'Approvals', icon: CheckCircle, badge: stats?.pending_approval },
+              { id: 'library', label: 'Library', icon: Film },
+              { id: 'profiles', label: 'Profiles', icon: Sliders },
+              { id: 'settings', label: 'Settings', icon: Settings },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as any)}
+                className={`flex items-center space-x-2 px-3.5 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  activeTab === tab.id 
+                    ? 'bg-zinc-800 text-white shadow-inner' 
+                    : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                }`}
+              >
+                <tab.icon className={`h-4 w-4 ${activeTab === tab.id ? 'text-violet-400' : 'text-zinc-500'}`} />
+                <span>{tab.label}</span>
+                {tab.badge && tab.badge > 0 ? (
+                  <span className="flex h-5 min-w-5 px-1 items-center justify-center text-[10px] font-bold bg-violet-600 text-white rounded-full">
+                    {tab.badge}
+                  </span>
+                ) : null}
+              </button>
+            ))}
+          </nav>
+        </div>
+      </header>
+
+      {/* WORKSPACE CONTENT */}
+      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        
+        {/* STATS OVERVIEW HEADER */}
+        {stats && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
+              <div className="flex items-center justify-between text-zinc-500 mb-2">
+                <span className="text-xs uppercase tracking-wider font-semibold">Total Library</span>
+                <Film className="h-4 w-4" />
+              </div>
+              <div className="text-2xl font-bold">{stats.total_movies}</div>
+              <div className="text-xs text-zinc-400 mt-1 flex items-center space-x-1.5">
+                <span className="h-1.5 w-1.5 rounded-full bg-zinc-400"></span>
+                <span>Found files</span>
+              </div>
+            </div>
+            
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
+              <div className="flex items-center justify-between text-zinc-500 mb-2">
+                <span className="text-xs uppercase tracking-wider font-semibold">Saved Space</span>
+                <HardDrive className="h-4 w-4 text-emerald-500" />
+              </div>
+              <div className="text-2xl font-bold text-emerald-400">{formatBytes(stats.space_saved_bytes)}</div>
+              <div className="text-xs text-emerald-500/80 mt-1 flex items-center space-x-1.5">
+                <Check className="h-3.5 w-3.5" />
+                <span>Storage reclaimed</span>
+              </div>
+            </div>
+            
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
+              <div className="flex items-center justify-between text-zinc-500 mb-2">
+                <span className="text-xs uppercase tracking-wider font-semibold">Pending Approval</span>
+                <CheckCircle className="h-4 w-4 text-violet-500" />
+              </div>
+              <div className="text-2xl font-bold text-violet-400">{stats.pending_approval}</div>
+              <div className="text-xs text-violet-500/80 mt-1 flex items-center space-x-1.5">
+                <Clock className="h-3 w-3" />
+                <span>Awaiting safe-swap review</span>
+              </div>
+            </div>
+
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
+              <div className="flex items-center justify-between text-zinc-500 mb-2">
+                <span className="text-xs uppercase tracking-wider font-semibold">Intel GPU / Hardware</span>
+              </div>
+              <div className="text-sm font-bold flex items-center space-x-2">
+                <div className={`h-2.5 w-2.5 rounded-full ${stats.gpu_status.detected ? 'bg-indigo-400 animate-pulse' : 'bg-zinc-600'}`}></div>
+                <span className="truncate max-w-[150px]">{stats.gpu_status.detected ? 'Intel QuickSync Active' : 'Software Fallback'}</span>
+              </div>
+              <div className="text-xs text-zinc-500 mt-1.5 truncate">{stats.gpu_status.name || 'No GPU passed'}</div>
+            </div>
+          </div>
+        )}
+
+        {/* LOADING STATE */}
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20 space-y-4">
+            <RefreshCw className="h-10 w-10 text-violet-500 animate-spin" />
+            <p className="text-zinc-400">Loading TransVault core modules...</p>
+          </div>
+        ) : (
+          <>
+            {/* ==================== DASHBOARD TAB ==================== */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-8">
+                
+                {/* ACTIVE TRANSCODING TASK SECTION */}
+                {stats?.gpu_status.active_job?.id ? (
+                  <div className="bg-gradient-to-b from-zinc-900 to-zinc-950 border border-amber-500/30 rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div className="absolute top-0 right-0 w-80 h-80 bg-amber-500/5 rounded-full filter blur-3xl pointer-events-none"></div>
+                    <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-amber-500/40 to-transparent"></div>
+                    
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <span className="flex h-2.5 w-2.5 relative">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-500"></span>
+                          </span>
+                          <span className="text-xs uppercase tracking-wider font-extrabold text-amber-500">Active Transcoding Job</span>
+                        </div>
+                        <h2 className="text-xl font-bold mt-1 text-zinc-100 truncate max-w-2xl">{stats.gpu_status.active_job.filename}</h2>
+                        <p className="text-xs text-zinc-400 mt-0.5">Matched Profile: <strong className="text-zinc-300">{stats.gpu_status.active_job.profile_name}</strong></p>
+                      </div>
+                      
+                      <div className="flex items-center space-x-6 bg-zinc-900/80 px-4 py-2.5 rounded-xl border border-zinc-800 self-start md:self-auto text-sm">
+                        <div>
+                          <span className="block text-[10px] text-zinc-500 uppercase tracking-wider">Frames per Sec</span>
+                          <strong className="text-amber-400 font-mono text-base">{stats.gpu_status.active_job.fps}</strong>
+                        </div>
+                        <div className="border-l border-zinc-800 h-8"></div>
+                        <div>
+                          <span className="block text-[10px] text-zinc-500 uppercase tracking-wider">Transcoding Speed</span>
+                          <strong className="text-zinc-200 font-mono text-base">{stats.gpu_status.active_job.speed}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Progress slider bar */}
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs font-mono font-medium">
+                        <span className="text-amber-400">{stats.gpu_status.active_job.progress}% Complete</span>
+                        <span className="text-zinc-500">Estimating remaining time...</span>
+                      </div>
+                      <div className="w-full bg-zinc-900 h-3.5 rounded-full overflow-hidden border border-zinc-800 p-0.5">
+                        <div 
+                          className="bg-gradient-to-r from-amber-600 to-amber-400 h-2 rounded-full transition-all duration-300 shadow-md shadow-amber-500/20"
+                          style={{ width: `${stats.gpu_status.active_job.progress}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="bg-zinc-900/20 border border-zinc-800/80 rounded-2xl p-6 text-center">
+                    <Cpu className="h-8 w-8 text-zinc-600 mx-auto mb-2" />
+                    <p className="text-sm text-zinc-400">No active transcoding jobs.</p>
+                    {stats?.queued && stats.queued > 0 ? (
+                      <p className="text-xs text-zinc-500 mt-1">
+                        {stats.queued} movie(s) waiting in the queue. 
+                        {schedulerConfig.enabled && " Currently outside transcoding schedule window."}
+                      </p>
+                    ) : (
+                      <div className="mt-4">
+                        <button
+                          onClick={handleScan}
+                          disabled={scanning}
+                          className="px-4 py-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-200 rounded-xl text-xs font-medium border border-zinc-700 transition flex items-center space-x-1.5 mx-auto"
+                        >
+                          <RefreshCw className={`h-3.5 w-3.5 ${scanning ? 'animate-spin' : ''}`} />
+                          <span>{scanning ? 'Scanning...' : 'Scan Library Now'}</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* RECENT MOVIES & LOGS DOUBLE COLUMN */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Left: Quick Actions / Vault Pending Approvals */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-bold text-md text-zinc-300">Quick Approvals</h3>
+                      <button onClick={() => setActiveTab('approvals')} className="text-violet-400 hover:text-violet-300 text-xs font-semibold flex items-center space-x-0.5">
+                        <span>View all approvals</span>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3">
+                      {movies.filter(m => m.status === 'pending_approval').slice(0, 3).length > 0 ? (
+                        movies.filter(m => m.status === 'pending_approval').slice(0, 3).map(movie => {
+                          const saved = movie.file_size - (movie.transcoded_size || 0);
+                          const pct = Math.round((saved / movie.file_size) * 100);
+                          return (
+                            <div key={movie.id} className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 flex justify-between items-center hover:border-zinc-700 transition-all">
+                              <div className="max-w-[70%]">
+                                <h4 className="font-bold text-sm text-zinc-200 truncate">{movie.filename}</h4>
+                                <div className="flex items-center space-x-2 text-xs text-zinc-500 mt-1 font-mono">
+                                  <span>{formatBytes(movie.file_size)}</span>
+                                  <ArrowRight className="h-3 w-3" />
+                                  <span className="text-emerald-400 font-semibold">{formatBytes(movie.transcoded_size || 0)}</span>
+                                  <span className="bg-emerald-950/80 text-emerald-400 border border-emerald-900 px-1 py-0.2 rounded text-[10px]">
+                                    -{pct}%
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="flex space-x-2">
+                                <button 
+                                  onClick={() => handleApprove(movie.id)}
+                                  className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition"
+                                  title="Approve & Delete Original"
+                                >
+                                  <Check className="h-4 w-4" />
+                                </button>
+                                <button 
+                                  onClick={() => handleReject(movie.id)}
+                                  className="p-1.5 bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition"
+                                  title="Reject & Restore Original"
+                                >
+                                  <XCircle className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="border border-zinc-800 border-dashed rounded-xl p-6 text-center text-xs text-zinc-500">
+                          No transcoded movies currently pending safe-swap approval.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Right: Library Status Log */}
+                  <div className="space-y-4">
+                    <h3 className="font-bold text-md text-zinc-300">Recent Transcodes</h3>
+                    <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-hidden">
+                      <div className="divide-y divide-zinc-800/80">
+                        {movies.filter(m => ['approved', 'transcoding', 'manual_matching'].includes(m.status)).slice(0, 5).length > 0 ? (
+                          movies.filter(m => ['approved', 'transcoding', 'manual_matching'].includes(m.status)).slice(0, 5).map(m => (
+                            <div key={m.id} className="p-3.5 flex justify-between items-center text-xs">
+                              <div className="truncate max-w-[60%]">
+                                <p className="font-semibold text-zinc-200 truncate">{m.filename}</p>
+                                <p className="text-zinc-500 text-[10px] mt-0.5">{m.matched_profile?.name || 'Automated match'}</p>
+                              </div>
+                              <div className="flex items-center space-x-3">
+                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${getStatusBadgeClass(m.status)}`}>
+                                  {m.status.replace('_', ' ')}
+                                </span>
+                                <button 
+                                  onClick={() => viewLogs(m.id, m.filename)}
+                                  className="p-1 text-zinc-500 hover:text-zinc-300 transition"
+                                  title="View Output Log"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </div>
+                          ))
+                        ) : (
+                          <div className="p-6 text-center text-xs text-zinc-500">
+                            No transcodes have been completed yet.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ==================== APPROVALS TAB ==================== */}
+            {activeTab === 'approvals' && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-xl font-bold text-zinc-200">Safe Vault Staging Queue</h2>
+                  <p className="text-zinc-400 text-xs mt-1">
+                    Original movies are held in the vault. Approve the transcoded file to delete the original and claim space, or Reject to roll back instantly.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {movies.length > 0 ? (
+                    movies.map(movie => {
+                      const savedBytes = movie.file_size - (movie.transcoded_size || 0);
+                      const savedPercent = Math.round((savedBytes / movie.file_size) * 100);
+                      
+                      return (
+                        <div key={movie.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden hover:border-violet-500/20 transition-all flex flex-col justify-between">
+                          <div className="p-5 space-y-4">
+                            <div>
+                              <h3 className="font-extrabold text-zinc-200 text-sm truncate" title={movie.filename}>{movie.filename}</h3>
+                              <span className="text-[10px] text-zinc-500 font-mono select-all block truncate mt-0.5">{movie.relative_path}</span>
+                            </div>
+
+                            {/* Comparison block */}
+                            <div className="grid grid-cols-2 gap-4 bg-zinc-950 p-3 rounded-lg border border-zinc-800 text-xs">
+                              <div>
+                                <span className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Original File</span>
+                                <div className="space-y-0.5 font-mono">
+                                  <p className="font-bold text-zinc-300">{formatBytes(movie.file_size)}</p>
+                                  <p className="text-zinc-500">{movie.codec?.toUpperCase()} | {movie.resolution}</p>
+                                  <p className="text-zinc-500">HDR: {movie.hdr_type.toUpperCase()}</p>
+                                </div>
+                              </div>
+                              <div className="border-l border-zinc-800 pl-4">
+                                <span className="block text-[10px] text-violet-400 uppercase tracking-wider mb-1">Transcoded File</span>
+                                <div className="space-y-0.5 font-mono">
+                                  <p className="font-bold text-emerald-400">{formatBytes(movie.transcoded_size || 0)}</p>
+                                  <p className="text-zinc-400">{movie.matched_profile?.video_codec.replace('_qsv', '').toUpperCase()} | {movie.matched_profile?.ffmpeg_preset}</p>
+                                  <p className="text-emerald-500 font-medium">Saved: {savedPercent}%</p>
+                                </div>
+                              </div>
+                            </div>
+                            
+                            {/* Track stats */}
+                            <div className="flex flex-wrap gap-2 text-[10px]">
+                              <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-850 rounded text-zinc-400 flex items-center gap-1">
+                                <Volume2 className="h-3 w-3 text-zinc-500" />
+                                Audio: {movie.matched_profile?.audio_languages} ({movie.matched_profile?.audio_codec})
+                              </span>
+                              <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-850 rounded text-zinc-400 flex items-center gap-1">
+                                <Languages className="h-3 w-3 text-zinc-500" />
+                                Subtitles: {movie.matched_profile?.subtitle_languages}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="p-4 bg-zinc-900/40 border-t border-zinc-800/60 flex space-x-2">
+                            <button
+                              onClick={() => handleApprove(movie.id)}
+                              className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              <span>Approve Swap</span>
+                            </button>
+                            <button
+                              onClick={() => handleReject(movie.id)}
+                              className="flex-1 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
+                            >
+                              <XCircle className="h-3.5 w-3.5" />
+                              <span>Reject & Restore</span>
+                            </button>
+                            <button
+                              onClick={() => viewLogs(movie.id, movie.filename)}
+                              className="p-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 rounded-lg transition"
+                              title="Logs"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="col-span-2 border border-zinc-800 border-dashed rounded-2xl py-16 text-center">
+                      <CheckCircle className="h-10 w-10 text-zinc-700 mx-auto mb-3" />
+                      <h3 className="font-extrabold text-zinc-400 text-md">Vault Staging is Empty</h3>
+                      <p className="text-zinc-500 text-xs mt-1">Transcoded movies will show up here for validation before deleting originals.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* ==================== LIBRARY TAB ==================== */}
+            {activeTab === 'library' && (
+              <div className="space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-xl font-bold text-zinc-200">Library Indexer</h2>
+                    <p className="text-zinc-400 text-xs mt-1">Track and manage transcoding jobs across your media directory.</p>
+                  </div>
+                  
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={handleScan}
+                      disabled={scanning}
+                      className="px-4 py-2 bg-violet-600 hover:bg-violet-500 disabled:bg-violet-800 text-white rounded-xl text-xs font-bold transition flex items-center space-x-1.5"
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${scanning ? 'animate-spin' : ''}`} />
+                      <span>{scanning ? 'Scanning...' : 'Trigger Scan'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Filter and Search Bar */}
+                <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-wrap gap-2">
+                    {[
+                      { filter: 'all', label: 'All Files' },
+                      { filter: 'detected', label: 'Detected' },
+                      { filter: 'queued', label: 'Queued' },
+                      { filter: 'transcoding', label: 'Transcoding' },
+                      { filter: 'pending_approval', label: 'Pending Approval' },
+                      { filter: 'approved', label: 'Approved' },
+                      { filter: 'manual_matching', label: 'Manual Match' },
+                      { filter: 'skipped', label: 'Skipped' },
+                    ].map(btn => (
+                      <button
+                        key={btn.filter}
+                        onClick={() => setLibFilter(btn.filter)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
+                          libFilter === btn.filter 
+                            ? 'bg-zinc-800 text-white' 
+                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
+                        }`}
+                      >
+                        {btn.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <input
+                    type="text"
+                    placeholder="Search movies by filename..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-violet-500 w-full md:max-w-xs text-zinc-200"
+                  />
+                </div>
+
+                {/* Movie list table */}
+                <div className="bg-zinc-900/20 border border-zinc-800 rounded-xl overflow-hidden">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-zinc-800 bg-zinc-900/50 text-zinc-400 font-bold uppercase tracking-wider">
+                        <th className="p-4">Movie Filename</th>
+                        <th className="p-4">Original Specs</th>
+                        <th className="p-4">Current Status</th>
+                        <th className="p-4">Matched Profile</th>
+                        <th className="p-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-850">
+                      {filteredMovies.length > 0 ? (
+                        filteredMovies.map(movie => (
+                          <tr key={movie.id} className="hover:bg-zinc-900/20 transition-all">
+                            <td className="p-4 max-w-sm">
+                              <p className="font-extrabold text-zinc-200 truncate" title={movie.filename}>{movie.filename}</p>
+                              <span className="text-[10px] text-zinc-500 font-mono select-all truncate block mt-0.5">{movie.relative_path}</span>
+                            </td>
+                            <td className="p-4 font-mono space-y-0.5 text-[11px]">
+                              <p className="text-zinc-300">{formatBytes(movie.file_size)}</p>
+                              <p className="text-zinc-500">{movie.codec?.toUpperCase()} | {movie.resolution}</p>
+                            </td>
+                            <td className="p-4">
+                              <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-extrabold tracking-wider ${getStatusBadgeClass(movie.status)}`}>
+                                {movie.status.replace('_', ' ')}
+                              </span>
+                            </td>
+                            <td className="p-4">
+                              {movie.status === 'manual_matching' ? (
+                                <select
+                                  onChange={(e) => handleManualProfileMatch(movie.id, parseInt(e.target.value))}
+                                  defaultValue=""
+                                  className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded px-2 py-1 text-[11px] max-w-[180px] focus:outline-none focus:border-rose-500"
+                                >
+                                  <option value="" disabled>Match Profile...</option>
+                                  {profiles.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                  ))}
+                                </select>
+                              ) : (
+                                <span className="text-zinc-300 font-semibold">{movie.matched_profile?.name || 'Dynamic Search...'}</span>
+                              )}
+                            </td>
+                            <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                              {['detected', 'skipped'].includes(movie.status) && (
+                                <button
+                                  onClick={() => handleQueue(movie.id)}
+                                  className="px-2.5 py-1 bg-zinc-800 hover:bg-zinc-750 border border-zinc-700 text-zinc-200 rounded font-semibold text-[10px]"
+                                >
+                                  Queue Job
+                                </button>
+                              )}
+                              
+                              {['detected', 'queued', 'manual_matching'].includes(movie.status) && (
+                                <button
+                                  onClick={() => handleSkip(movie.id)}
+                                  className="px-2.5 py-1 hover:bg-zinc-850 text-zinc-500 rounded font-semibold text-[10px]"
+                                >
+                                  Skip
+                                </button>
+                              )}
+
+                              {movie.status === 'pending_approval' && (
+                                <div className="inline-flex space-x-1">
+                                  <button
+                                    onClick={() => handleApprove(movie.id)}
+                                    className="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded transition"
+                                    title="Approve Swap"
+                                  >
+                                    <Check className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleReject(movie.id)}
+                                    className="p-1 bg-rose-600 hover:bg-rose-500 text-white rounded transition"
+                                    title="Reject Restore"
+                                  >
+                                    <XCircle className="h-3.5 w-3.5" />
+                                  </button>
+                                </div>
+                              )}
+
+                              <button
+                                onClick={() => viewLogs(movie.id, movie.filename)}
+                                className="p-1 text-zinc-500 hover:text-zinc-300 transition inline-block"
+                                title="Logs"
+                              >
+                                <FileText className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))
+                      ) : (
+                        <tr>
+                          <td colSpan={5} className="p-8 text-center text-zinc-500">
+                            No movies match the selected filters.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* ==================== PROFILES TAB ==================== */}
+            {activeTab === 'profiles' && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-xl font-bold text-zinc-200">Encoding Profiles</h2>
+                    <p className="text-zinc-400 text-xs mt-1">Compose rules to target transcoding properties by movie matching parameters.</p>
+                  </div>
+
+                  <button
+                    onClick={() => setShowCreateProfileModal(true)}
+                    className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-950/20 transition flex items-center space-x-1.5"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Create Profile</span>
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {profiles.map(p => (
+                    <div key={p.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition flex flex-col justify-between">
+                      <div className="space-y-4">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <div className="flex items-center space-x-2">
+                              <h3 className="font-extrabold text-zinc-200 text-sm">{p.name}</h3>
+                              {p.is_system && (
+                                <span className="text-[9px] bg-zinc-850 text-zinc-400 border border-zinc-750 px-1 py-0.2 rounded font-bold uppercase tracking-wider">System</span>
+                              )}
+                            </div>
+                            <p className="text-zinc-500 text-[11px] mt-1">{p.description || 'No description provided.'}</p>
+                          </div>
+                          {!p.is_system && (
+                            <button
+                              onClick={() => handleDeleteProfile(p.id)}
+                              className="p-1.5 bg-zinc-950 hover:bg-rose-950 border border-zinc-850 hover:border-rose-900 text-zinc-500 hover:text-rose-400 rounded-lg transition"
+                              title="Delete Profile"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Profile metrics grid */}
+                        <div className="grid grid-cols-2 gap-4 bg-zinc-950 p-3.5 rounded-lg border border-zinc-850 text-xs font-mono">
+                          <div>
+                            <span className="block text-[9px] text-zinc-500 uppercase tracking-wider mb-1">Target Rules</span>
+                            <div className="space-y-0.5 text-zinc-400">
+                              <p>Width: {p.resolution_min_width}px - {p.resolution_max_width === 99999 ? 'Any' : `${p.resolution_max_width}px`}</p>
+                              <p>HDR: {p.hdr_matching.toUpperCase().replace('_', ' ')}</p>
+                            </div>
+                          </div>
+                          <div>
+                            <span className="block text-[9px] text-violet-400 uppercase tracking-wider mb-1">Encoders</span>
+                            <div className="space-y-0.5 text-zinc-400">
+                              <p>Video: {p.video_codec.toUpperCase()}</p>
+                              <p>Quality: {p.video_quality_type.toUpperCase()} {p.video_quality_value}</p>
+                              <p>Preset: {p.ffmpeg_preset}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Tracks details */}
+                        <div className="flex flex-wrap gap-2 text-[10px]">
+                          <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-850 rounded text-zinc-400">
+                            Audio Keep: {p.audio_languages} | Codec: {p.audio_codec}
+                          </span>
+                          <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-850 rounded text-zinc-400">
+                            Subs Keep: {p.subtitle_languages} {p.strip_image_subs && '(Strip PGS)'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ==================== SETTINGS TAB ==================== */}
+            {activeTab === 'settings' && (
+              <div className="space-y-6 max-w-2xl">
+                <div>
+                  <h2 className="text-xl font-bold text-zinc-200">System Configurations</h2>
+                  <p className="text-zinc-400 text-xs mt-1">Configure directories, automatic queue behaviors, and schedule execution windows.</p>
+                </div>
+
+                <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-6 space-y-6">
+                  
+                  {/* Auto-Queue Toggle */}
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="font-extrabold text-sm text-zinc-200 block">Auto-Queue Transcodes</label>
+                      <span className="text-zinc-500 text-xs mt-0.5">Automatically queue newly discovered movies matching profile rules.</span>
+                    </div>
+                    <input 
+                      type="checkbox" 
+                      checked={autoQueue} 
+                      onChange={(e) => setAutoQueue(e.target.checked)}
+                      className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-zinc-800 rounded bg-zinc-950"
+                    />
+                  </div>
+
+                  <hr className="border-zinc-800" />
+
+                  {/* Scheduler Settings */}
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-extrabold text-sm text-zinc-200 flex items-center space-x-1.5">
+                        <Clock className="h-4 w-4 text-zinc-500" />
+                        <span>Transcoding Scheduling Window</span>
+                      </h3>
+                      <p className="text-zinc-500 text-xs mt-0.5">Define timeframe when hardware is allowed to execute transcoding workloads.</p>
+                    </div>
+
+                    <div className="flex items-center space-x-3">
+                      <input 
+                        type="checkbox" 
+                        checked={schedulerConfig.enabled} 
+                        onChange={(e) => setSchedulerConfig({...schedulerConfig, enabled: e.target.checked})}
+                        className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-zinc-800 rounded bg-zinc-950"
+                      />
+                      <label className="text-xs text-zinc-300">Enable time schedule restriction</label>
+                    </div>
+
+                    {schedulerConfig.enabled && (
+                      <div className="grid grid-cols-2 gap-4 max-w-xs font-mono">
+                        <div>
+                          <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">Start Time</label>
+                          <input 
+                            type="time" 
+                            value={schedulerConfig.start_time}
+                            onChange={(e) => setSchedulerConfig({...schedulerConfig, start_time: e.target.value})}
+                            className="bg-zinc-950 border border-zinc-800 rounded p-1.5 w-full text-xs text-zinc-300 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[10px] text-zinc-500 uppercase tracking-wider block mb-1">End Time</label>
+                          <input 
+                            type="time" 
+                            value={schedulerConfig.end_time}
+                            onChange={(e) => setSchedulerConfig({...schedulerConfig, end_time: e.target.value})}
+                            className="bg-zinc-950 border border-zinc-800 rounded p-1.5 w-full text-xs text-zinc-300 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <hr className="border-zinc-800" />
+
+                  {/* Disk Space Safety config */}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="font-extrabold text-sm text-zinc-200 block">Disk Space Safety Guardrail</label>
+                      <span className="text-zinc-500 text-xs mt-0.5">Pause transcoding if free disk space on library volume falls below threshold.</span>
+                    </div>
+
+                    <div className="flex items-center space-x-2 max-w-[120px] font-mono">
+                      <input 
+                        type="number" 
+                        value={diskSafetyConfig.min_free_gb}
+                        onChange={(e) => setDiskSafetyConfig({ min_free_gb: parseInt(e.target.value) || 0 })}
+                        className="bg-zinc-950 border border-zinc-800 rounded p-1.5 w-full text-xs text-zinc-300 focus:outline-none text-right"
+                      />
+                      <span className="text-xs text-zinc-400">GB</span>
+                    </div>
+                  </div>
+
+                  {/* Save Button */}
+                  <div className="pt-4">
+                    <button
+                      onClick={handleSaveSettings}
+                      className="px-4 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-violet-950/20"
+                    >
+                      Save Configuration
+                    </button>
+                  </div>
+
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+      </main>
+
+      {/* FOOTER */}
+      <footer className="border-t border-zinc-900 bg-zinc-950 py-4 text-center text-[10px] text-zinc-600">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
+          <p>© 2026 TransVault Inc. Open source MIT license.</p>
+          <div className="flex space-x-3">
+            <span className="hover:text-zinc-400 cursor-pointer">Documentation</span>
+            <span>•</span>
+            <span className="hover:text-zinc-400 cursor-pointer">Support Discord</span>
+          </div>
+        </div>
+      </footer>
+
+      {/* ==================== DIALOGS & MODALS ==================== */}
+
+      {/* CREATE PROFILE MODAL */}
+      {showCreateProfileModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col justify-between">
+            <div className="p-6 border-b border-zinc-800">
+              <h3 className="font-extrabold text-md text-zinc-200">Compose Transcoding Profile</h3>
+              <p className="text-zinc-500 text-xs mt-0.5">Compose rules for selecting video presets and track modifications.</p>
+            </div>
+            
+            <form onSubmit={handleCreateProfile} className="p-6 space-y-4 text-xs flex-grow">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="col-span-2">
+                  <label className="block text-zinc-400 mb-1 font-semibold">Profile Name</label>
+                  <input
+                    type="text" required
+                    placeholder="e.g. Intel AV1 QSV 1080p SDR"
+                    value={newProfile.name}
+                    onChange={(e) => setNewProfile({...newProfile, name: e.target.value})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none focus:border-violet-500 text-zinc-200"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-zinc-400 mb-1 font-semibold">Description</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Optimized encoding for movies below 4K resolution"
+                    value={newProfile.description}
+                    onChange={(e) => setNewProfile({...newProfile, description: e.target.value})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none focus:border-violet-500 text-zinc-200"
+                  />
+                </div>
+
+                <div className="border-t border-zinc-850 col-span-2 my-2"></div>
+                <h4 className="font-extrabold text-xs text-zinc-300 col-span-2">Matching Rules</h4>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Min Resolution Width (px)</label>
+                  <input
+                    type="number"
+                    value={newProfile.resolution_min_width}
+                    onChange={(e) => setNewProfile({...newProfile, resolution_min_width: parseInt(e.target.value) || 0})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Max Resolution Width (px)</label>
+                  <input
+                    type="number"
+                    value={newProfile.resolution_max_width}
+                    onChange={(e) => setNewProfile({...newProfile, resolution_max_width: parseInt(e.target.value) || 99999})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-zinc-400 mb-1 font-semibold">HDR Matching Filter</label>
+                  <select
+                    value={newProfile.hdr_matching}
+                    onChange={(e) => setNewProfile({...newProfile, hdr_matching: e.target.value as any})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  >
+                    <option value="any">Match Any SDR or HDR</option>
+                    <option value="hdr_only">HDR / Dolby Vision Only</option>
+                    <option value="sdr_only">SDR Only</option>
+                  </select>
+                </div>
+
+                <div className="border-t border-zinc-850 col-span-2 my-2"></div>
+                <h4 className="font-extrabold text-xs text-zinc-300 col-span-2">Video Encoding Settings</h4>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Video Codec</label>
+                  <select
+                    value={newProfile.video_codec}
+                    onChange={(e) => setNewProfile({...newProfile, video_codec: e.target.value})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  >
+                    <option value="av1_qsv">AV1 Hardware (Intel QSV)</option>
+                    <option value="hevc_qsv">HEVC/H.265 Hardware (Intel QSV)</option>
+                    <option value="h264_qsv">H.264 Hardware (Intel QSV)</option>
+                    <option value="libsvtav1">AV1 Software (SVT-AV1)</option>
+                    <option value="libx265">HEVC/H.265 Software (CPU)</option>
+                    <option value="libx264">H.264 Software (CPU)</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Quality Level (CRF / Global Quality)</label>
+                  <input
+                    type="number"
+                    value={newProfile.video_quality_value}
+                    onChange={(e) => setNewProfile({...newProfile, video_quality_value: parseInt(e.target.value) || 22})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  />
+                </div>
+
+                <div className="border-t border-zinc-850 col-span-2 my-2"></div>
+                <h4 className="font-extrabold text-xs text-zinc-300 col-span-2">Tracks Whitelist Rules</h4>
+
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Audio Languages (comma separated)</label>
+                  <input
+                    type="text"
+                    value={newProfile.audio_languages}
+                    onChange={(e) => setNewProfile({...newProfile, audio_languages: e.target.value})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-400 mb-1 font-semibold">Subtitle Languages (comma separated)</label>
+                  <input
+                    type="text"
+                    value={newProfile.subtitle_languages}
+                    onChange={(e) => setNewProfile({...newProfile, subtitle_languages: e.target.value})}
+                    className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                  />
+                </div>
+                <div className="col-span-2 flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={newProfile.strip_image_subs}
+                    onChange={(e) => setNewProfile({...newProfile, strip_image_subs: e.target.checked})}
+                    className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-zinc-800 rounded bg-zinc-950"
+                  />
+                  <label className="text-zinc-400 font-semibold">Strip image subtitles (PGS/DVD) to save space</label>
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-zinc-800 flex space-x-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setShowCreateProfileModal(false)}
+                  className="px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-lg font-semibold"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-bold shadow-md shadow-violet-950/20"
+                >
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* LOGS MODAL */}
+      {activeLogs && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[80vh] overflow-hidden shadow-2xl flex flex-col justify-between">
+            <div className="p-5 border-b border-zinc-850 flex justify-between items-center">
+              <div>
+                <h3 className="font-extrabold text-sm text-zinc-200">Transcode stdout log details</h3>
+                <p className="text-zinc-500 text-xs mt-0.5 truncate max-w-2xl">{activeLogs.name}</p>
+              </div>
+              <button 
+                onClick={() => setActiveLogs(null)}
+                className="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-750 text-zinc-300 rounded-lg text-xs font-semibold transition"
+              >
+                Close Logs
+              </button>
+            </div>
+            
+            <div className="p-5 flex-grow overflow-auto bg-zinc-950 text-[11px] font-mono leading-relaxed text-zinc-400 border-b border-zinc-850 whitespace-pre-wrap select-text">
+              {activeLogs.content}
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+export default App;
