@@ -885,32 +885,39 @@ function App() {
                     <h3 className="font-bold text-md text-zinc-300">Recent Transcodes</h3>
                     <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-hidden">
                       <div className="divide-y divide-zinc-800/80">
-                        {movies.filter(m => ['approved', 'transcoding', 'manual_matching'].includes(m.status)).slice(0, 5).length > 0 ? (
-                          movies.filter(m => ['approved', 'transcoding', 'manual_matching'].includes(m.status)).slice(0, 5).map(m => (
-                            <div key={m.id} className="p-3.5 flex justify-between items-center text-xs">
-                              <div className="truncate max-w-[60%]">
-                                <p className="font-semibold text-zinc-200 truncate">{m.filename}</p>
-                                <p className="text-zinc-500 text-[10px] mt-0.5">{m.matched_profile?.name || 'Automated match'}</p>
+                        {(() => {
+                          const recent = movies
+                            .filter(m => ['approved', 'transcoding', 'manual_matching'].includes(m.status))
+                            .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+                            .slice(0, 5);
+                          
+                          return recent.length > 0 ? (
+                            recent.map(m => (
+                              <div key={m.id} className="p-3.5 flex justify-between items-center text-xs">
+                                <div className="truncate max-w-[60%]">
+                                  <p className="font-semibold text-zinc-200 truncate">{m.filename}</p>
+                                  <p className="text-zinc-500 text-[10px] mt-0.5">{m.matched_profile?.name || 'Automated match'}</p>
+                                </div>
+                                <div className="flex items-center space-x-3">
+                                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${getStatusBadgeClass(m.status)}`}>
+                                    {m.status.replace('_', ' ')}
+                                  </span>
+                                  <button 
+                                    onClick={() => viewLogs(m.id, m.filename)}
+                                    className="p-1 text-zinc-500 hover:text-zinc-300 transition"
+                                    title="View Output Log"
+                                  >
+                                    <FileText className="h-4 w-4" />
+                                  </button>
+                                </div>
                               </div>
-                              <div className="flex items-center space-x-3">
-                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold ${getStatusBadgeClass(m.status)}`}>
-                                  {m.status.replace('_', ' ')}
-                                </span>
-                                <button 
-                                  onClick={() => viewLogs(m.id, m.filename)}
-                                  className="p-1 text-zinc-500 hover:text-zinc-300 transition"
-                                  title="View Output Log"
-                                >
-                                  <FileText className="h-4 w-4" />
-                                </button>
-                              </div>
+                            ))
+                          ) : (
+                            <div className="p-6 text-center text-xs text-zinc-500">
+                              No transcodes have been completed yet.
                             </div>
-                          ))
-                        ) : (
-                          <div className="p-6 text-center text-xs text-zinc-500">
-                            No transcodes have been completed yet.
-                          </div>
-                        )}
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
