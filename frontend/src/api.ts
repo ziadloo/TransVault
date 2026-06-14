@@ -126,8 +126,11 @@ export const api = {
     if (!res.ok) throw new Error('Failed to skip movie');
   },
 
-  matchProfile: async (movieId: number, profileId: number): Promise<void> => {
-    const res = await fetch(`${API_BASE}/movies/${movieId}/match-profile?profile_id=${profileId}`, { method: 'PATCH' });
+  matchProfile: async (movieId: number, profileId: number | null): Promise<void> => {
+    const url = profileId !== null
+      ? `${API_BASE}/movies/${movieId}/match-profile?profile_id=${profileId}`
+      : `${API_BASE}/movies/${movieId}/match-profile`;
+    const res = await fetch(url, { method: 'PATCH' });
     if (!res.ok) throw new Error('Failed to match profile');
   },
 

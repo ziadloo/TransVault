@@ -469,7 +469,7 @@ function App() {
     }
   };
 
-  const handleManualProfileMatch = async (movieId: number, profileId: number) => {
+  const handleManualProfileMatch = async (movieId: number, profileId: number | null) => {
     try {
       await api.matchProfile(movieId, profileId);
       // Auto queue after matching
@@ -1016,13 +1016,16 @@ function App() {
                               </span>
                             </td>
                             <td className="p-4">
-                              {movie.status === 'manual_matching' ? (
+                              {['detected', 'skipped', 'manual_matching'].includes(movie.status) ? (
                                 <select
-                                  onChange={(e) => handleManualProfileMatch(movie.id, parseInt(e.target.value))}
-                                  defaultValue=""
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    handleManualProfileMatch(movie.id, val ? parseInt(val) : null);
+                                  }}
+                                  value={movie.matched_profile_id || ""}
                                   className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded px-2 py-1 text-[11px] max-w-[180px] focus:outline-none focus:border-rose-500"
                                 >
-                                  <option value="" disabled>Match Profile...</option>
+                                  <option value="">Dynamic Search...</option>
                                   {profiles.map(p => (
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                   ))}
