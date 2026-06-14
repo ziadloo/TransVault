@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from backend.app.config import settings
@@ -17,6 +17,20 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
     cursor.execute("PRAGMA journal_mode=WAL")
     cursor.execute("PRAGMA synchronous=NORMAL")
     cursor.close()
+
+def run_migrations():
+    try:
+        inspector = inspect(engine)
+        if "profiles" in inspector.get_table_names():
+            columns = [col["name"] for col in inspector.get_columns("profiles")]
+            if "enabled" not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN enabled BOOLEAN DEFAULT 1"))
+                print("Database migration: Added 'enabled' column to 'profiles' table.")
+    except Exception as e:
+        print(f"Migration error: {e}")
+
+run_migrations()
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
