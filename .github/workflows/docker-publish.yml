@@ -42,7 +42,6 @@ jobs:
         with:
           images: |
             ghcr.io/${{ github.repository_owner }}/transvault
-            # docker.io/${{ secrets.DOCKERHUB_USERNAME }}/transvault # Uncomment for DockerHub
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
@@ -52,7 +51,6 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository_owner }}/transvault:latest
             ghcr.io/${{ github.repository_owner }}/transvault:${{ github.sha }}
-            # ${{ secrets.DOCKERHUB_USERNAME }}/transvault:latest # Uncomment for DockerHub
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
