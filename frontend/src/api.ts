@@ -46,6 +46,10 @@ export interface Profile {
   added_at: string;
 }
 
+export interface ProfileSuggestion extends Omit<Profile, 'id' | 'is_system' | 'added_at'> {
+  match_count: number;
+}
+
 export interface Movie {
   id: number;
   relative_path: string;
@@ -153,6 +157,12 @@ export const api = {
   getProfiles: async (): Promise<Profile[]> => {
     const res = await fetch(`${API_BASE}/profiles`);
     if (!res.ok) throw new Error('Failed to fetch profiles');
+    return res.json();
+  },
+
+  getSuggestedProfiles: async (): Promise<ProfileSuggestion[]> => {
+    const res = await fetch(`${API_BASE}/profiles/suggested`);
+    if (!res.ok) throw new Error('Failed to fetch suggested profiles');
     return res.json();
   },
 

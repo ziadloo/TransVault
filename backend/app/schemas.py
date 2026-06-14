@@ -52,6 +52,9 @@ class ProfileResponse(ProfileBase):
     class Config:
         from_attributes = True
 
+class ProfileSuggestion(ProfileBase):
+    match_count: int
+
 
 # Movie Schemas
 class MovieResponse(BaseModel):

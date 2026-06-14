@@ -5,7 +5,7 @@ import {
   ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit
 } from 'lucide-react';
 import { api } from './api';
-import type { Movie, Profile, DashboardStats, Setting } from './api';
+import type { Movie, Profile, DashboardStats, Setting, ProfileSuggestion } from './api';
 
 interface ApprovalCardProps {
   movie: Movie;
@@ -299,6 +299,7 @@ function App() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [suggestedProfiles, setSuggestedProfiles] = useState<ProfileSuggestion[]>([]);
   const [_, setSettingsList] = useState<Setting[]>([]);
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
@@ -349,6 +350,9 @@ function App() {
 
       const profileList = await api.getProfiles();
       setProfiles(profileList);
+
+      const suggestedList = await api.getSuggestedProfiles();
+      setSuggestedProfiles(suggestedList);
 
       const allSettings = await api.getSettings();
       setSettingsList(allSettings);
@@ -401,6 +405,9 @@ function App() {
           // Soft reload
           const profileList = await api.getProfiles();
           setProfiles(profileList);
+          
+          const suggestedList = await api.getSuggestedProfiles();
+          setSuggestedProfiles(suggestedList);
           
           if (activeTab === 'library') {
             const movieList = await api.getMovies();
@@ -585,6 +592,28 @@ function App() {
       subtitle_languages: 'eng',
       strip_image_subs: true,
       custom_ffmpeg_args: ''
+    });
+    setShowCreateProfileModal(true);
+  };
+
+  const handleAdoptProfileClick = (s: ProfileSuggestion) => {
+    setEditingProfileId(null);
+    setNewProfile({
+      name: s.name,
+      description: s.description || '',
+      resolution_min_width: s.resolution_min_width,
+      resolution_max_width: s.resolution_max_width,
+      hdr_matching: s.hdr_matching,
+      video_codec: s.video_codec,
+      video_quality_type: s.video_quality_type,
+      video_quality_value: s.video_quality_value,
+      ffmpeg_preset: s.ffmpeg_preset,
+      audio_languages: s.audio_languages,
+      audio_codec: s.audio_codec,
+      audio_bitrate: s.audio_bitrate,
+      subtitle_languages: s.subtitle_languages,
+      strip_image_subs: s.strip_image_subs,
+      custom_ffmpeg_args: s.custom_ffmpeg_args || ''
     });
     setShowCreateProfileModal(true);
   };
@@ -1263,6 +1292,76 @@ function App() {
                     </div>
                   ))}
                 </div>
+
+                {/* Suggested Profiles Section */}
+                {suggestedProfiles.length > 0 && (
+                  <div className="mt-8 pt-8 border-t border-zinc-850 space-y-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-zinc-200 flex items-center space-x-2">
+                        <Sliders className="h-5 w-5 text-violet-500" />
+                        <span>Suggested Encoding Profiles</span>
+                      </h3>
+                      <p className="text-zinc-400 text-xs mt-1">Based on files in your library that do not match any existing profiles. Adopt them to customize and automate their transcoding.</p>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                      {suggestedProfiles.map((sp, idx) => (
+                        <div key={`suggested-${idx}`} className="bg-zinc-900/30 border border-dashed border-zinc-850 rounded-xl p-5 hover:border-violet-900/60 transition flex flex-col justify-between">
+                          <div className="space-y-4">
+                            <div className="flex items-start justify-between">
+                              <div>
+                                <div className="flex items-center space-x-2">
+                                  <h3 className="font-extrabold text-zinc-300 text-sm">{sp.name}</h3>
+                                  <span className="text-[9px] bg-violet-950/40 text-violet-400 border border-violet-900/60 px-1.5 py-0.5 rounded font-bold uppercase tracking-wider">Suggested</span>
+                                  <span className="text-[9px] bg-zinc-950 text-zinc-500 border border-zinc-850 px-1.5 py-0.5 rounded font-mono font-semibold">{sp.match_count} file{sp.match_count > 1 ? 's' : ''}</span>
+                                </div>
+                                <p className="text-zinc-500 text-[11px] mt-1">{sp.description}</p>
+                              </div>
+                              
+                              <button
+                                onClick={() => handleAdoptProfileClick(sp)}
+                                className="px-2.5 py-1.5 bg-violet-950 hover:bg-violet-900 text-violet-300 hover:text-violet-200 border border-violet-900/85 rounded-lg text-xs font-bold transition flex items-center space-x-1"
+                                title="Adopt Profile"
+                              >
+                                <Plus className="h-3 w-3" />
+                                <span>Adopt</span>
+                              </button>
+                            </div>
+
+                            {/* Suggestion metrics grid */}
+                            <div className="grid grid-cols-2 gap-4 bg-zinc-950/60 p-3.5 rounded-lg border border-zinc-850 text-xs font-mono">
+                              <div>
+                                <span className="block text-[9px] text-zinc-500 uppercase tracking-wider mb-1">Target Rules</span>
+                                <div className="space-y-0.5 text-zinc-400">
+                                  <p>Width: {sp.resolution_min_width}px - {sp.resolution_max_width === 99999 ? 'Any' : `${sp.resolution_max_width}px`}</p>
+                                  <p>HDR: {sp.hdr_matching.toUpperCase().replace('_', ' ')}</p>
+                                </div>
+                              </div>
+                              <div>
+                                <span className="block text-[9px] text-violet-500 uppercase tracking-wider mb-1">Recommended Encoders</span>
+                                <div className="space-y-0.5 text-zinc-400">
+                                  <p>Video: {sp.video_codec.toUpperCase()}</p>
+                                  <p>Quality: {sp.video_quality_type.toUpperCase()} {sp.video_quality_value}</p>
+                                  <p>Preset: {sp.ffmpeg_preset}</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Tracks details */}
+                            <div className="flex flex-wrap gap-2 text-[10px]">
+                              <span className="px-2 py-0.5 bg-zinc-950/50 border border-zinc-850 rounded text-zinc-500">
+                                Audio Keep: {sp.audio_languages} | Codec: {sp.audio_codec}
+                              </span>
+                              <span className="px-2 py-0.5 bg-zinc-950/50 border border-zinc-850 rounded text-zinc-500">
+                                Subs Keep: {sp.subtitle_languages} {sp.strip_image_subs && '(Strip PGS)'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 

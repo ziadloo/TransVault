@@ -13,7 +13,7 @@ from backend.app.database import engine, Base, get_db, SessionLocal
 from backend.app.models import Movie, Profile, Setting
 from backend.app.schemas import (
     MovieResponse, ProfileResponse, ProfileCreate, ProfileUpdate,
-    SettingResponse, SettingUpdate, DashboardStats
+    SettingResponse, SettingUpdate, DashboardStats, ProfileSuggestion
 )
 from backend.app.scheduler import init_scheduler, shutdown_scheduler, active_job, scan_library
 from backend.app.transcoder import approve_transcode, reject_transcode, stop_transcode, get_media_info, parse_media_metadata, check_if_transcode_needed
@@ -358,6 +358,77 @@ def get_movie_logs(movie_id: int, db: Session = Depends(get_db)):
     return {"logs": movie.transcode_logs or "No logs available."}
 
 # --- Profiles Endpoints ---
+
+@app.get("/api/profiles/suggested", response_model=List[ProfileSuggestion])
+def list_suggested_profiles(db: Session = Depends(get_db)):
+    movies = db.query(Movie).all()
+    groups = {}
+    for m in movies:
+        if not m.resolution or "x" not in m.resolution:
+            continue
+        try:
+            width = int(m.resolution.split("x")[0])
+        except ValueError:
+            continue
+            
+        if width >= 3000:
+            min_w, max_w, res_label = 3000, 99999, "4K"
+        elif width >= 1500:
+            min_w, max_w, res_label = 1500, 2999, "1080p"
+        elif width >= 1000:
+            min_w, max_w, res_label = 1000, 1499, "720p"
+        else:
+            min_w, max_w, res_label = 0, 999, "SD"
+            
+        is_hdr = m.hdr_type in ["hdr10", "dolby_vision"]
+        hdr_matching = "hdr_only" if is_hdr else "sdr_only"
+        hdr_label = "HDR" if is_hdr else "SDR"
+        
+        group_key = (min_w, max_w, hdr_matching, res_label, hdr_label)
+        groups[group_key] = groups.get(group_key, 0) + 1
+        
+    existing_profiles = db.query(Profile).all()
+    suggestions = []
+    
+    for (min_w, max_w, hdr_matching, res_label, hdr_label), count in groups.items():
+        exists = any(
+            p.resolution_min_width == min_w and 
+            p.resolution_max_width == max_w and 
+            p.hdr_matching == hdr_matching
+            for p in existing_profiles
+        )
+        if exists:
+            continue
+            
+        if res_label == "4K" or hdr_label == "HDR":
+            recommended_codec = "av1_qsv"
+        elif res_label == "1080p":
+            recommended_codec = "hevc_qsv"
+        else:
+            recommended_codec = "h264_qsv"
+            
+        suggestion = {
+            "name": f"Suggested: Intel QSV {res_label} {hdr_label} Optimizer",
+            "description": f"Suggested profile optimized for {count} movie(s) with {res_label} {hdr_label} properties.",
+            "resolution_min_width": min_w,
+            "resolution_max_width": max_w,
+            "hdr_matching": hdr_matching,
+            "video_codec": recommended_codec,
+            "video_quality_type": "crf",
+            "video_quality_value": 22 if hdr_label == "HDR" else 20,
+            "ffmpeg_preset": "medium",
+            "audio_languages": "eng",
+            "audio_codec": "copy",
+            "audio_bitrate": "640k",
+            "subtitle_languages": "eng",
+            "strip_image_subs": True,
+            "custom_ffmpeg_args": "",
+            "match_count": count
+        }
+        suggestions.append(suggestion)
+        
+    suggestions.sort(key=lambda x: x["match_count"], reverse=True)
+    return suggestions
 
 @app.get("/api/profiles", response_model=List[ProfileResponse])
 def list_profiles(db: Session = Depends(get_db)):
