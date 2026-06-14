@@ -63,6 +63,7 @@ class Profile(Base):
     
     custom_ffmpeg_args = Column(Text, nullable=True)
     is_system = Column(Boolean, default=False)
+    enabled = Column(Boolean, default=True)
     
     movies = relationship("Movie", back_populates="matched_profile")
     

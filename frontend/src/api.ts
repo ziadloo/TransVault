@@ -43,6 +43,7 @@ export interface Profile {
   strip_image_subs: boolean;
   custom_ffmpeg_args?: string;
   is_system: boolean;
+  enabled: boolean;
   added_at: string;
 }
 

@@ -116,7 +116,7 @@ def parse_media_metadata(info: dict):
 
 def find_closest_profile(db: Session, width: int, hdr_type: str) -> Optional[Profile]:
     """Find the closest profile that matches the movie properties."""
-    profiles = db.query(Profile).all()
+    profiles = db.query(Profile).filter(Profile.enabled == True).all()
     if not profiles:
         return None
         

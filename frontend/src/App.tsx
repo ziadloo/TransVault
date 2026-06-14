@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
   RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
-  ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit
+  ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit, Power
 } from 'lucide-react';
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting, ProfileSuggestion } from './api';
@@ -327,7 +327,8 @@ function App() {
     audio_bitrate: '640k',
     subtitle_languages: 'eng',
     strip_image_subs: true,
-    custom_ffmpeg_args: ''
+    custom_ffmpeg_args: '',
+    enabled: true
   });
 
   // Settings State
@@ -529,7 +530,8 @@ function App() {
         audio_bitrate: '640k',
         subtitle_languages: 'eng',
         strip_image_subs: true,
-        custom_ffmpeg_args: ''
+        custom_ffmpeg_args: '',
+        enabled: true
       });
       fetchData();
     } catch (err) {
@@ -568,6 +570,15 @@ function App() {
     }
   };
 
+  const handleToggleProfileEnabled = async (p: Profile) => {
+    try {
+      await api.updateProfile(p.id, { enabled: !p.enabled });
+      fetchData();
+    } catch (err) {
+      alert('Failed to update profile status');
+    }
+  };
+
   const handleEditProfileClick = (p: Profile) => {
     setEditingProfileId(p.id);
     setNewProfile({
@@ -585,7 +596,8 @@ function App() {
       audio_bitrate: p.audio_bitrate,
       subtitle_languages: p.subtitle_languages,
       strip_image_subs: p.strip_image_subs,
-      custom_ffmpeg_args: p.custom_ffmpeg_args || ''
+      custom_ffmpeg_args: p.custom_ffmpeg_args || '',
+      enabled: p.enabled
     });
     setShowCreateProfileModal(true);
   };
@@ -607,7 +619,8 @@ function App() {
       audio_bitrate: '640k',
       subtitle_languages: 'eng',
       strip_image_subs: true,
-      custom_ffmpeg_args: ''
+      custom_ffmpeg_args: '',
+      enabled: true
     });
     setShowCreateProfileModal(true);
   };
@@ -629,7 +642,8 @@ function App() {
       audio_bitrate: s.audio_bitrate,
       subtitle_languages: s.subtitle_languages,
       strip_image_subs: s.strip_image_subs,
-      custom_ffmpeg_args: s.custom_ffmpeg_args || ''
+      custom_ffmpeg_args: s.custom_ffmpeg_args || '',
+      enabled: true
     });
     setShowCreateProfileModal(true);
   };
@@ -1244,16 +1258,38 @@ function App() {
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                   {profiles.map(p => (
-                    <div key={p.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700 transition flex flex-col justify-between">
+                    <div key={p.id} className={`border rounded-xl p-5 transition flex flex-col justify-between ${
+                      p.enabled 
+                        ? 'bg-zinc-900/60 border-zinc-800 hover:border-zinc-700' 
+                        : 'bg-zinc-950/40 border-zinc-900/80 opacity-60 hover:opacity-80'
+                    }`}>
                       <div className="space-y-4">
                         <div className="flex items-start justify-between">
                           <div>
                             <div className="flex items-center space-x-2">
-                              <h3 className="font-extrabold text-zinc-200 text-sm">{p.name}</h3>
+                              <h3 className={`font-extrabold text-sm ${p.enabled ? 'text-zinc-200' : 'text-zinc-400 line-through'}`}>{p.name}</h3>
+                              <span className={`text-[8px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${
+                                p.enabled 
+                                  ? 'bg-emerald-950/40 text-emerald-400 border border-emerald-900/40' 
+                                  : 'bg-zinc-900 text-zinc-500 border border-zinc-850'
+                              }`}>
+                                {p.enabled ? 'Active' : 'Disabled'}
+                              </span>
                             </div>
                             <p className="text-zinc-500 text-[11px] mt-1">{p.description || 'No description provided.'}</p>
                           </div>
                           <div className="flex items-center space-x-1.5">
+                            <button
+                              onClick={() => handleToggleProfileEnabled(p)}
+                              className={`p-1.5 bg-zinc-950 border rounded-lg transition cursor-pointer ${
+                                p.enabled 
+                                  ? 'border-zinc-850 hover:border-emerald-800 text-zinc-500 hover:text-emerald-400' 
+                                  : 'border-zinc-850 hover:border-zinc-750 text-zinc-500 hover:text-zinc-300'
+                              }`}
+                              title={p.enabled ? "Disable Profile" : "Enable Profile"}
+                            >
+                              <Power className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => handleEditProfileClick(p)}
                               className="p-1.5 bg-zinc-950 hover:bg-violet-950 border border-zinc-850 hover:border-violet-900 text-zinc-500 hover:text-violet-400 rounded-lg transition cursor-pointer"
@@ -1621,6 +1657,15 @@ function App() {
                     className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-zinc-800 rounded bg-zinc-950"
                   />
                   <label className="text-zinc-400 font-semibold">Strip image subtitles (PGS/DVD) to save space</label>
+                </div>
+                <div className="col-span-2 flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={newProfile.enabled}
+                    onChange={(e) => setNewProfile({...newProfile, enabled: e.target.checked})}
+                    className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-zinc-800 rounded bg-zinc-950"
+                  />
+                  <label className="text-zinc-400 font-semibold">Enable profile for automatic matching</label>
                 </div>
               </div>
 
