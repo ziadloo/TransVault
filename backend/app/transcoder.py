@@ -149,7 +149,7 @@ def find_closest_profile(db: Session, width: int, hdr_type: str) -> Optional[Pro
 
 def build_ffmpeg_command(input_file: str, output_file: str, profile: Profile, media_info: dict) -> list:
     """Build the FFmpeg CLI command based on the matched profile and movie streams."""
-    cmd = ["ffmpeg", "-y", "-loglevel", "info", "-stats"]
+    cmd = ["ffmpeg", "-y", "-nostdin", "-loglevel", "info", "-stats"]
     
     # 1. Hardware acceleration flags if using Intel QSV
     is_qsv = profile.video_codec in ["av1_qsv", "hevc_qsv", "h264_qsv"]
@@ -315,6 +315,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
         # Execute transcoding process with output parsing
         process = subprocess.Popen(
             cmd,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             universal_newlines=True,
