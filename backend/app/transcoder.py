@@ -5,6 +5,7 @@ import re
 import shutil
 import logging
 from datetime import datetime
+from typing import Optional
 from sqlalchemy.orm import Session
 from backend.app.config import settings
 from backend.app.models import Movie, Profile
