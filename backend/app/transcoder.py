@@ -139,10 +139,10 @@ def find_closest_profile(db: Session, width: int, hdr_type: str) -> Optional[Pro
         matched_profiles.append((p, width_range))
         
     if not matched_profiles:
-        # Fallback to system default profile (e.g., system 1080p SDR)
-        system_default = db.query(Profile).filter(Profile.is_system == True).first()
+        # Fallback to system default profile (e.g., system 1080p SDR) that is enabled
+        system_default = db.query(Profile).filter(Profile.is_system == True, Profile.enabled == True).first()
         if not system_default:
-            system_default = db.query(Profile).first()
+            system_default = db.query(Profile).filter(Profile.enabled == True).first()
         return system_default
         
     # Return the profile with the narrowest matching width range (closest fit)
