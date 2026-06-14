@@ -389,6 +389,8 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
         logger.exception("Transcoding execution error")
         movie.status = "manual_matching"
         movie.error_message = str(e)
+        if 'logs' in locals() and logs:
+            movie.transcode_logs = "".join(logs[-200:])
         db.commit()
         
         # Cleanup temporary transcoding file if it exists
