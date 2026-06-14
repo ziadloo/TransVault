@@ -2,10 +2,273 @@ import React, { useState, useEffect } from 'react';
 import { 
   Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
   RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
-  ArrowRight, Sliders, Volume2, Languages, AlertCircle
+  ArrowRight, Sliders, AlertCircle, Download, Loader2
 } from 'lucide-react';
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting } from './api';
+
+interface ApprovalCardProps {
+  movie: Movie;
+  onApprove: (id: number) => void;
+  onReject: (id: number) => void;
+  onViewLogs: (id: number, filename: string) => void;
+  formatBytes: (bytes: number, decimals?: number) => string;
+}
+
+function ApprovalCard({ movie, onApprove, onReject, onViewLogs, formatBytes }: ApprovalCardProps) {
+  const [compareInfo, setCompareInfo] = useState<any | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    const fetchCompare = async () => {
+      try {
+        setLoading(true);
+        const data = await api.getCompareInfo(movie.id);
+        if (active) {
+          setCompareInfo(data);
+          setError(null);
+        }
+      } catch (err: any) {
+        if (active) {
+          setError(err.message || 'Failed to load comparison data');
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+    fetchCompare();
+    return () => {
+      active = false;
+    };
+  }, [movie.id]);
+
+  const savedBytes = movie.file_size - (movie.transcoded_size || 0);
+  const savedPercent = Math.round((savedBytes / movie.file_size) * 100);
+
+  const formatAudioTrack = (track: any) => {
+    const lang = track.language ? track.language.toUpperCase() : 'UND';
+    const codec = track.codec ? track.codec.toUpperCase() : 'UNKNOWN';
+    const channels = track.channels ? `${track.channels}ch` : '';
+    const parts = [lang, codec, channels].filter(Boolean).join(' | ');
+    return track.title && !track.title.toLowerCase().startsWith('audio')
+      ? `${parts} (${track.title})`
+      : parts;
+  };
+
+  const formatSubtitleTrack = (track: any) => {
+    const lang = track.language ? track.language.toUpperCase() : 'UND';
+    const codec = track.codec ? track.codec.toUpperCase() : 'UNKNOWN';
+    const parts = [lang, codec].filter(Boolean).join(' | ');
+    return track.title && !track.title.toLowerCase().startsWith('sub')
+      ? `${parts} (${track.title})`
+      : parts;
+  };
+
+  return (
+    <div className="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden hover:border-violet-500/20 transition-all flex flex-col justify-between">
+      <div className="p-5 space-y-4">
+        <div>
+          <h3 className="font-extrabold text-zinc-200 text-sm truncate" title={movie.filename}>
+            {movie.filename}
+          </h3>
+          <span className="text-[10px] text-zinc-500 font-mono select-all block truncate mt-0.5">
+            {movie.relative_path}
+          </span>
+        </div>
+
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-12 space-y-2 bg-zinc-950/40 rounded-lg border border-zinc-800/50">
+            <Loader2 className="h-6 w-6 animate-spin text-violet-500" />
+            <span className="text-xs text-zinc-400">Probing files for comparison...</span>
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center justify-center py-6 space-y-2 bg-rose-950/20 border border-rose-900/40 rounded-lg text-rose-300 px-4 text-center">
+            <AlertCircle className="h-5 w-5 text-rose-400" />
+            <p className="text-xs font-semibold">Failed to compare details</p>
+            <p className="text-[10px] text-rose-400">{error}</p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Original File */}
+            <div className="bg-zinc-950/80 p-4 rounded-xl border border-zinc-850 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex justify-between items-start">
+                  <span className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider font-mono">Original File</span>
+                  <a
+                    href={api.getOriginalDownloadUrl(movie.id)}
+                    download
+                    className="inline-flex items-center space-x-1 text-[10px] text-violet-400 hover:text-violet-300 font-bold transition hover:underline font-mono"
+                  >
+                    <Download className="h-3 w-3" />
+                    <span>Download</span>
+                  </a>
+                </div>
+                
+                {compareInfo?.original ? (
+                  <div className="mt-2 space-y-2.5">
+                    <div className="font-mono text-xs text-zinc-300">
+                      <p className="font-bold text-zinc-100 text-sm">{formatBytes(compareInfo.original.file_size)}</p>
+                      <p className="text-zinc-400 mt-0.5">
+                        {compareInfo.original.codec?.toUpperCase()} | {compareInfo.original.resolution}
+                      </p>
+                      <p className="text-zinc-500 text-[10px] mt-0.5">
+                        HDR: {compareInfo.original.hdr_type?.toUpperCase()}
+                      </p>
+                    </div>
+
+                    {/* Audio Streams */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-semibold font-mono">
+                        Audio Tracks ({compareInfo.original.audio_streams?.length || 0})
+                      </span>
+                      <div className="bg-zinc-900/60 rounded p-1.5 border border-zinc-800 max-h-[70px] overflow-y-auto space-y-1 text-[10px] font-mono text-zinc-400">
+                        {compareInfo.original.audio_streams && compareInfo.original.audio_streams.length > 0 ? (
+                          compareInfo.original.audio_streams.map((s: any, idx: number) => (
+                            <div key={idx} className="truncate border-b border-zinc-850/40 pb-0.5 last:border-b-0" title={formatAudioTrack(s)}>
+                              #{s.index}: {formatAudioTrack(s)}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-zinc-600 italic">No audio tracks</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Subtitle Streams */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-semibold font-mono">
+                        Subtitle Tracks ({compareInfo.original.subtitle_streams?.length || 0})
+                      </span>
+                      <div className="bg-zinc-900/60 rounded p-1.5 border border-zinc-800 max-h-[70px] overflow-y-auto space-y-1 text-[10px] font-mono text-zinc-400">
+                        {compareInfo.original.subtitle_streams && compareInfo.original.subtitle_streams.length > 0 ? (
+                          compareInfo.original.subtitle_streams.map((s: any, idx: number) => (
+                            <div key={idx} className="truncate border-b border-zinc-850/40 pb-0.5 last:border-b-0" title={formatSubtitleTrack(s)}>
+                              #{s.index}: {formatSubtitleTrack(s)}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-zinc-600 italic">No subtitle tracks</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-rose-400 font-mono mt-2 italic">File details unavailable (vault file missing?)</p>
+                )}
+              </div>
+            </div>
+
+            {/* Transcoded File */}
+            <div className="bg-zinc-950/80 p-4 rounded-xl border border-zinc-850 flex flex-col justify-between space-y-3">
+              <div>
+                <div className="flex justify-between items-start">
+                  <span className="text-[10px] text-violet-400 font-bold uppercase tracking-wider font-mono">Transcoded File</span>
+                  <a
+                    href={api.getTranscodedDownloadUrl(movie.id)}
+                    download
+                    className="inline-flex items-center space-x-1 text-[10px] text-violet-400 hover:text-violet-300 font-bold transition hover:underline font-mono"
+                  >
+                    <Download className="h-3 w-3" />
+                    <span>Download</span>
+                  </a>
+                </div>
+
+                {compareInfo?.transcoded ? (
+                  <div className="mt-2 space-y-2.5">
+                    <div className="font-mono text-xs text-zinc-300">
+                      <div className="flex items-baseline space-x-2">
+                        <p className="font-bold text-emerald-400 text-sm">
+                          {formatBytes(compareInfo.transcoded.file_size)}
+                        </p>
+                        {savedPercent > 0 && (
+                          <span className="text-[10px] text-emerald-500 font-extrabold bg-emerald-950/60 border border-emerald-900 px-1 py-0.2 rounded font-mono">
+                            -{savedPercent}%
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-zinc-400 mt-0.5">
+                        {compareInfo.transcoded.codec?.toUpperCase()} | {compareInfo.transcoded.resolution}
+                      </p>
+                      <p className="text-zinc-500 text-[10px] mt-0.5">
+                        HDR: {compareInfo.transcoded.hdr_type?.toUpperCase()}
+                      </p>
+                    </div>
+
+                    {/* Audio Streams */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-semibold font-mono">
+                        Audio Tracks ({compareInfo.transcoded.audio_streams?.length || 0})
+                      </span>
+                      <div className="bg-zinc-900/60 rounded p-1.5 border border-zinc-800 max-h-[70px] overflow-y-auto space-y-1 text-[10px] font-mono text-zinc-400">
+                        {compareInfo.transcoded.audio_streams && compareInfo.transcoded.audio_streams.length > 0 ? (
+                          compareInfo.transcoded.audio_streams.map((s: any, idx: number) => (
+                            <div key={idx} className="truncate border-b border-zinc-850/40 pb-0.5 last:border-b-0" title={formatAudioTrack(s)}>
+                              #{s.index}: {formatAudioTrack(s)}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-zinc-600 italic">No audio tracks</div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Subtitle Streams */}
+                    <div className="space-y-1">
+                      <span className="text-[9px] text-zinc-500 uppercase tracking-wider block font-semibold font-mono">
+                        Subtitle Tracks ({compareInfo.transcoded.subtitle_streams?.length || 0})
+                      </span>
+                      <div className="bg-zinc-900/60 rounded p-1.5 border border-zinc-800 max-h-[70px] overflow-y-auto space-y-1 text-[10px] font-mono text-zinc-400">
+                        {compareInfo.transcoded.subtitle_streams && compareInfo.transcoded.subtitle_streams.length > 0 ? (
+                          compareInfo.transcoded.subtitle_streams.map((s: any, idx: number) => (
+                            <div key={idx} className="truncate border-b border-zinc-850/40 pb-0.5 last:border-b-0" title={formatSubtitleTrack(s)}>
+                              #{s.index}: {formatSubtitleTrack(s)}
+                            </div>
+                          ))
+                        ) : (
+                          <div className="text-zinc-600 italic">No subtitle tracks</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-rose-400 font-mono mt-2 italic">File details unavailable (transcode failed?)</p>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="p-4 bg-zinc-900/40 border-t border-zinc-800/60 flex space-x-2">
+        <button
+          onClick={() => onApprove(movie.id)}
+          className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 cursor-pointer font-sans"
+        >
+          <Check className="h-3.5 w-3.5" />
+          <span>Approve Swap</span>
+        </button>
+        <button
+          onClick={() => onReject(movie.id)}
+          className="flex-1 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1 cursor-pointer font-sans"
+        >
+          <XCircle className="h-3.5 w-3.5" />
+          <span>Reject & Restore</span>
+        </button>
+        <button
+          onClick={() => onViewLogs(movie.id, movie.filename)}
+          className="p-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 rounded-lg transition cursor-pointer"
+          title="Logs"
+        >
+          <FileText className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'approvals' | 'library' | 'profiles' | 'settings'>('dashboard');
@@ -621,77 +884,16 @@ function App() {
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   {movies.length > 0 ? (
-                    movies.map(movie => {
-                      const savedBytes = movie.file_size - (movie.transcoded_size || 0);
-                      const savedPercent = Math.round((savedBytes / movie.file_size) * 100);
-                      
-                      return (
-                        <div key={movie.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl overflow-hidden hover:border-violet-500/20 transition-all flex flex-col justify-between">
-                          <div className="p-5 space-y-4">
-                            <div>
-                              <h3 className="font-extrabold text-zinc-200 text-sm truncate" title={movie.filename}>{movie.filename}</h3>
-                              <span className="text-[10px] text-zinc-500 font-mono select-all block truncate mt-0.5">{movie.relative_path}</span>
-                            </div>
-
-                            {/* Comparison block */}
-                            <div className="grid grid-cols-2 gap-4 bg-zinc-950 p-3 rounded-lg border border-zinc-800 text-xs">
-                              <div>
-                                <span className="block text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Original File</span>
-                                <div className="space-y-0.5 font-mono">
-                                  <p className="font-bold text-zinc-300">{formatBytes(movie.file_size)}</p>
-                                  <p className="text-zinc-500">{movie.codec?.toUpperCase()} | {movie.resolution}</p>
-                                  <p className="text-zinc-500">HDR: {movie.hdr_type.toUpperCase()}</p>
-                                </div>
-                              </div>
-                              <div className="border-l border-zinc-800 pl-4">
-                                <span className="block text-[10px] text-violet-400 uppercase tracking-wider mb-1">Transcoded File</span>
-                                <div className="space-y-0.5 font-mono">
-                                  <p className="font-bold text-emerald-400">{formatBytes(movie.transcoded_size || 0)}</p>
-                                  <p className="text-zinc-400">{movie.matched_profile?.video_codec.replace('_qsv', '').toUpperCase()} | {movie.matched_profile?.ffmpeg_preset}</p>
-                                  <p className="text-emerald-500 font-medium">Saved: {savedPercent}%</p>
-                                </div>
-                              </div>
-                            </div>
-                            
-                            {/* Track stats */}
-                            <div className="flex flex-wrap gap-2 text-[10px]">
-                              <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-850 rounded text-zinc-400 flex items-center gap-1">
-                                <Volume2 className="h-3 w-3 text-zinc-500" />
-                                Audio: {movie.matched_profile?.audio_languages} ({movie.matched_profile?.audio_codec})
-                              </span>
-                              <span className="px-2 py-0.5 bg-zinc-950 border border-zinc-850 rounded text-zinc-400 flex items-center gap-1">
-                                <Languages className="h-3 w-3 text-zinc-500" />
-                                Subtitles: {movie.matched_profile?.subtitle_languages}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="p-4 bg-zinc-900/40 border-t border-zinc-800/60 flex space-x-2">
-                            <button
-                              onClick={() => handleApprove(movie.id)}
-                              className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
-                            >
-                              <Check className="h-3.5 w-3.5" />
-                              <span>Approve Swap</span>
-                            </button>
-                            <button
-                              onClick={() => handleReject(movie.id)}
-                              className="flex-1 py-2 bg-rose-950/80 hover:bg-rose-900 border border-rose-800 text-rose-300 rounded-lg text-xs font-bold transition flex items-center justify-center space-x-1"
-                            >
-                              <XCircle className="h-3.5 w-3.5" />
-                              <span>Reject & Restore</span>
-                            </button>
-                            <button
-                              onClick={() => viewLogs(movie.id, movie.filename)}
-                              className="p-2 bg-zinc-850 hover:bg-zinc-800 text-zinc-400 rounded-lg transition"
-                              title="Logs"
-                            >
-                              <FileText className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
+                    movies.map(movie => (
+                      <ApprovalCard
+                        key={movie.id}
+                        movie={movie}
+                        onApprove={handleApprove}
+                        onReject={handleReject}
+                        onViewLogs={viewLogs}
+                        formatBytes={formatBytes}
+                      />
+                    ))
                   ) : (
                     <div className="col-span-2 border border-zinc-800 border-dashed rounded-2xl py-16 text-center">
                       <CheckCircle className="h-10 w-10 text-zinc-700 mx-auto mb-3" />

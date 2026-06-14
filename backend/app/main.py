@@ -379,6 +379,61 @@ def update_setting(key: str, payload: SettingUpdate, db: Session = Depends(get_d
     db.commit()
     return {"message": "Setting updated successfully."}
 
+# --- Compare and Download Endpoints ---
+
+@app.get("/api/movies/{movie_id}/compare-info")
+def compare_info(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie or movie.status != "pending_approval":
+        raise HTTPException(status_code=404, detail="Movie not found or not pending approval")
+        
+    vault_full_path = os.path.join(settings.vault_dir, movie.vault_path)
+    transcoded_full_path = os.path.join(settings.library_dir, movie.relative_path)
+    
+    from backend.app.transcoder import get_media_info, parse_media_metadata
+    
+    result = {"original": None, "transcoded": None}
+    
+    if os.path.exists(vault_full_path):
+        try:
+            info = get_media_info(vault_full_path)
+            result["original"] = parse_media_metadata(info)
+        except Exception as e:
+            logger.error(f"Failed to parse vault info: {e}")
+            
+    if os.path.exists(transcoded_full_path):
+        try:
+            info = get_media_info(transcoded_full_path)
+            result["transcoded"] = parse_media_metadata(info)
+        except Exception as e:
+            logger.error(f"Failed to parse transcoded info: {e}")
+            
+    return result
+
+@app.get("/api/movies/{movie_id}/download/original")
+def download_original(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie or not movie.vault_path:
+        raise HTTPException(status_code=404, detail="Movie not found or original not in vault")
+        
+    vault_full_path = os.path.join(settings.vault_dir, movie.vault_path)
+    if not os.path.exists(vault_full_path):
+        raise HTTPException(status_code=404, detail="Original file not found in vault")
+        
+    return FileResponse(vault_full_path, media_type="video/octet-stream", filename=os.path.basename(movie.vault_path))
+
+@app.get("/api/movies/{movie_id}/download/transcoded")
+def download_transcoded(movie_id: int, db: Session = Depends(get_db)):
+    movie = db.query(Movie).filter(Movie.id == movie_id).first()
+    if not movie:
+        raise HTTPException(status_code=404, detail="Movie not found")
+        
+    transcoded_full_path = os.path.join(settings.library_dir, movie.relative_path)
+    if not os.path.exists(transcoded_full_path):
+        raise HTTPException(status_code=404, detail="Transcoded file not found in library")
+        
+    return FileResponse(transcoded_full_path, media_type="video/octet-stream", filename=movie.filename)
+
 # --- Serve Frontend (for Single-Container Production Build) ---
 
 # Check if front-end production build folder exists

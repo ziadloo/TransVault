@@ -1,5 +1,30 @@
 const API_BASE = import.meta.env.DEV ? 'http://localhost:8080/api' : '/api';
 
+export interface StreamInfo {
+  index: number;
+  codec: string;
+  language: string;
+  channels?: number;
+  title?: string;
+}
+
+export interface MediaMetadata {
+  codec: string;
+  width: number;
+  height: number;
+  resolution: string;
+  hdr_type: string;
+  audio_streams: StreamInfo[];
+  subtitle_streams: StreamInfo[];
+  duration: number;
+  file_size: number;
+}
+
+export interface CompareInfo {
+  original: MediaMetadata | null;
+  transcoded: MediaMetadata | null;
+}
+
 export interface Profile {
   id: number;
   name: string;
@@ -156,4 +181,19 @@ export const api = {
     });
     if (!res.ok) throw new Error('Failed to update setting');
   },
+
+  getCompareInfo: async (movieId: number): Promise<CompareInfo> => {
+    const res = await fetch(`${API_BASE}/movies/${movieId}/compare-info`);
+    if (!res.ok) throw new Error('Failed to fetch compare info');
+    return res.json();
+  },
+
+  getOriginalDownloadUrl: (movieId: number): string => {
+    return `${API_BASE}/movies/${movieId}/download/original`;
+  },
+
+  getTranscodedDownloadUrl: (movieId: number): string => {
+    return `${API_BASE}/movies/${movieId}/download/transcoded`;
+  },
 };
+
