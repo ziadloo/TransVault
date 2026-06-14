@@ -360,8 +360,19 @@ def update_setting(key: str, payload: SettingUpdate, db: Session = Depends(get_d
 # --- Serve Frontend (for Single-Container Production Build) ---
 
 # Check if front-end production build folder exists
-frontend_dist_path = "/home/mehran/Documents/GitHub/TransVault/frontend/dist"
-if os.path.exists(frontend_dist_path):
+possible_paths = [
+    "/app/frontend/dist",
+    "/home/mehran/Documents/GitHub/TransVault/frontend/dist",
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")),
+    os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
+]
+frontend_dist_path = None
+for p in possible_paths:
+    if os.path.exists(p):
+        frontend_dist_path = p
+        break
+
+if frontend_dist_path:
     app.mount("/assets", StaticFiles(directory=os.path.join(frontend_dist_path, "assets")), name="assets")
     
     @app.get("/{full_path:path}")
