@@ -362,7 +362,6 @@ def update_setting(key: str, payload: SettingUpdate, db: Session = Depends(get_d
 # Check if front-end production build folder exists
 possible_paths = [
     "/app/frontend/dist",
-    "/home/mehran/Documents/GitHub/TransVault/frontend/dist",
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist")),
     os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend", "dist"))
 ]
