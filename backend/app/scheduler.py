@@ -113,13 +113,18 @@ def progress_callback(progress, fps, speed):
 
 def run_transcode_task(movie_id: int):
     """Internal runner for transcoding inside a thread."""
-    db = SessionLocal()
+    db = None
     try:
+        db = SessionLocal()
         run_transcode(db, movie_id, progress_callback=progress_callback)
     except Exception as e:
         logger.error(f"Error executing thread transcode for movie {movie_id}: {e}")
     finally:
-        db.close()
+        if db:
+            try:
+                db.close()
+            except Exception as close_err:
+                logger.error(f"Error closing DB session in transcode task: {close_err}")
         # Reset active job state
         active_job["movie_id"] = None
         active_job["progress"] = 0.0
@@ -134,8 +139,9 @@ def check_queue_and_process():
     # If a job is already running, do nothing
     if active_job["movie_id"] is not None:
         # Check if the thread is actually alive, just in case
-        if active_job["thread"] and not active_job["thread"].is_alive():
-            logger.warning("Transcoding thread died unexpectedly. Resetting active job.")
+        is_thread_dead = (active_job["thread"] is None) or (not active_job["thread"].is_alive())
+        if is_thread_dead:
+            logger.warning("Transcoding thread is not active/running. Resetting active job.")
             active_job["movie_id"] = None
             active_job["thread"] = None
         else:
@@ -189,9 +195,14 @@ def check_queue_and_process():
             active_job["speed"] = "0.0x"
             
             # Spawn transcoding thread
-            t = Thread(target=run_transcode_task, args=(next_movie.id,), daemon=True)
-            active_job["thread"] = t
-            t.start()
+            try:
+                t = Thread(target=run_transcode_task, args=(next_movie.id,), daemon=True)
+                active_job["thread"] = t
+                t.start()
+            except Exception as spawn_err:
+                logger.error(f"Failed to spawn transcode thread for movie {next_movie.id}: {spawn_err}")
+                active_job["movie_id"] = None
+                active_job["thread"] = None
     except Exception as e:
         logger.error(f"Scheduler queue processor failed: {e}")
     finally:
