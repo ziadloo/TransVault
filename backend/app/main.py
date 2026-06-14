@@ -131,7 +131,7 @@ def seed_defaults(db: Session):
     # 2. Seed Settings
     default_settings = {
         "auto_queue": "true",
-        "queue_halted": "false",
+        "queue_halted": "true",
         "scheduler_config": json.dumps({
             "enabled": False,
             "start_time": "00:00",
