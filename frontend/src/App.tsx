@@ -372,7 +372,7 @@ function App() {
 
       // Fetch movies based on active view
       if (activeTab === 'library') {
-        const movieList = await api.getMovies();
+        const movieList = await api.getMovies(libFilter === 'all' ? undefined : libFilter, searchQuery);
         setMovies(movieList);
       } else if (activeTab === 'approvals') {
         const pendingList = await api.getMovies('pending_approval');
@@ -393,6 +393,22 @@ function App() {
     fetchData();
   }, [activeTab]);
 
+  // Handle search and status filter changes on the server side (with 300ms debounce)
+  useEffect(() => {
+    if (activeTab === 'library') {
+      const delayDebounceFn = setTimeout(async () => {
+        try {
+          const status = libFilter === 'all' ? undefined : libFilter;
+          const movieList = await api.getMovies(status, searchQuery);
+          setMovies(movieList);
+        } catch (err) {
+          console.error('Error searching movies:', err);
+        }
+      }, 300);
+      return () => clearTimeout(delayDebounceFn);
+    }
+  }, [searchQuery, libFilter, activeTab]);
+
   // Polling for live active job stats (every 3 seconds)
   useEffect(() => {
     const interval = setInterval(async () => {
@@ -410,7 +426,7 @@ function App() {
           setSuggestedProfiles(suggestedList);
           
           if (activeTab === 'library') {
-            const movieList = await api.getMovies();
+            const movieList = await api.getMovies(libFilter === 'all' ? undefined : libFilter, searchQuery);
             setMovies(movieList);
           } else if (activeTab === 'approvals') {
             const pendingList = await api.getMovies('pending_approval');
@@ -661,13 +677,8 @@ function App() {
     }
   };
 
-  // Filter movies for library tab
-  const filteredMovies = movies.filter(m => {
-    const matchesStatus = libFilter === 'all' || m.status === libFilter;
-    const matchesSearch = m.filename.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          m.relative_path.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesStatus && matchesSearch;
-  });
+  // Filter movies for library tab (already filtered on the server side)
+  const filteredMovies = movies;
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex flex-col font-sans selection:bg-violet-500 selection:text-white">

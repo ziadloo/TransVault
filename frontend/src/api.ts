@@ -108,8 +108,10 @@ export const api = {
     return res.json();
   },
 
-  getMovies: async (status?: string): Promise<Movie[]> => {
-    const url = status ? `${API_BASE}/movies?status=${status}&limit=100` : `${API_BASE}/movies?limit=100`;
+  getMovies: async (status?: string, search?: string): Promise<Movie[]> => {
+    let url = `${API_BASE}/movies?limit=200`;
+    if (status) url += `&status=${status}`;
+    if (search) url += `&search=${encodeURIComponent(search)}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch movies');
     return res.json();

@@ -230,13 +230,19 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 @app.get("/api/movies", response_model=List[MovieResponse])
 def list_movies(
     status: Optional[str] = None,
-    limit: int = 50,
+    search: Optional[str] = None,
+    limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db)
 ):
     query = db.query(Movie)
     if status:
         query = query.filter(Movie.status == status)
+    if search:
+        query = query.filter(
+            (Movie.filename.ilike(f"%{search}%")) |
+            (Movie.relative_path.ilike(f"%{search}%"))
+        )
     return query.order_by(Movie.added_at.desc()).offset(offset).limit(limit).all()
 
 @app.post("/api/movies/scan")
