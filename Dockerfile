@@ -16,7 +16,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 WORKDIR /app
 
-# Install system dependencies including FFmpeg, Intel Media Drivers and VA-API
+# Install system dependencies, enable non-free, add Jellyfin repository for hardware accelerated ffmpeg (oneVPL)
 RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
         sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/g' /etc/apt/sources.list.d/debian.sources; \
     fi && \
@@ -24,12 +24,20 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
         sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list; \
     fi && \
     apt-get update && apt-get install -y --no-install-recommends \
-    ffmpeg \
+    gnupg curl ca-certificates && \
+    mkdir -p /etc/apt/keyrings && \
+    curl -fsSL https://repo.jellyfin.org/jellyfin_team.gpg.key | gpg --dearmor -o /etc/apt/keyrings/jellyfin.gpg && \
+    echo "deb [signed-by=/etc/apt/keyrings/jellyfin.gpg] https://repo.jellyfin.org/debian bookworm main" > /etc/apt/sources.list.d/jellyfin.list && \
+    apt-get update && \
+    (apt-get install -y --no-install-recommends jellyfin-ffmpeg7 || apt-get install -y --no-install-recommends jellyfin-ffmpeg6) && \
+    apt-get install -y --no-install-recommends \
     intel-media-va-driver-non-free \
     va-driver-all \
     libva-drm2 \
     libva2 \
     vainfo \
+    && ln -sf /usr/lib/jellyfin-ffmpeg/ffmpeg /usr/bin/ffmpeg \
+    && ln -sf /usr/lib/jellyfin-ffmpeg/ffprobe /usr/bin/ffprobe \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
