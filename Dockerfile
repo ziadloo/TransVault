@@ -25,7 +25,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
     fi && \
     apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    intel-media-driver \
+    intel-media-va-driver-non-free \
     va-driver-all \
     libva-drm2 \
     libva2 \
