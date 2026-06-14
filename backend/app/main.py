@@ -16,7 +16,7 @@ from backend.app.schemas import (
     SettingResponse, SettingUpdate, DashboardStats
 )
 from backend.app.scheduler import init_scheduler, shutdown_scheduler, active_job, scan_library
-from backend.app.transcoder import approve_transcode, reject_transcode, stop_transcode
+from backend.app.transcoder import approve_transcode, reject_transcode, stop_transcode, get_media_info, parse_media_metadata, check_if_transcode_needed
 
 # Initialize logger
 logger = logging.getLogger("transvault.main")
@@ -252,6 +252,19 @@ def queue_movie(movie_id: int, db: Session = Depends(get_db)):
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
         
+    if movie.matched_profile:
+        try:
+            full_path = os.path.join(settings.library_dir, movie.relative_path)
+            if os.path.exists(full_path):
+                info = get_media_info(full_path)
+                meta = parse_media_metadata(info)
+                if not check_if_transcode_needed(meta, movie.matched_profile, movie.filename):
+                    movie.status = "skipped"
+                    db.commit()
+                    return {"message": "Movie matches profile settings; skipped transcoding."}
+        except Exception as e:
+            logger.error(f"Error checking if transcode is needed for movie {movie_id}: {e}")
+            
     movie.status = "queued"
     db.commit()
     return {"message": "Movie successfully queued for transcoding."}
@@ -298,11 +311,25 @@ def match_profile_manually(movie_id: int, profile_id: Optional[int] = Query(None
         
     if profile_id is None or profile_id == 0:
         movie.matched_profile_id = None
+        movie.status = "detected"
     else:
         profile = db.query(Profile).filter(Profile.id == profile_id).first()
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")
         movie.matched_profile_id = profile.id
+        
+        try:
+            full_path = os.path.join(settings.library_dir, movie.relative_path)
+            if os.path.exists(full_path):
+                info = get_media_info(full_path)
+                meta = parse_media_metadata(info)
+                if not check_if_transcode_needed(meta, profile, movie.filename):
+                    movie.status = "skipped"
+                else:
+                    movie.status = "detected"
+        except Exception as e:
+            logger.error(f"Error checking if transcode is needed for manual match of movie {movie_id}: {e}")
+            movie.status = "detected"
         
     db.commit()
     return {"message": "Profile matched successfully."}
@@ -353,8 +380,6 @@ def update_profile(profile_id: int, profile: ProfileUpdate, db: Session = Depend
     db_profile = db.query(Profile).filter(Profile.id == profile_id).first()
     if not db_profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    if db_profile.is_system:
-        raise HTTPException(status_code=400, detail="System profiles cannot be modified")
         
     update_data = profile.dict(exclude_unset=True)
     for key, value in update_data.items():
@@ -369,8 +394,6 @@ def delete_profile(profile_id: int, db: Session = Depends(get_db)):
     db_profile = db.query(Profile).filter(Profile.id == profile_id).first()
     if not db_profile:
         raise HTTPException(status_code=404, detail="Profile not found")
-    if db_profile.is_system:
-        raise HTTPException(status_code=400, detail="System profiles cannot be deleted")
         
     # Nullify matching references in movies
     db.query(Movie).filter(Movie.matched_profile_id == profile_id).update({Movie.matched_profile_id: None})

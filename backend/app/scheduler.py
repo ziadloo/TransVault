@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.config import settings
 from backend.app.database import SessionLocal
 from backend.app.models import Movie, Profile, Setting
-from backend.app.transcoder import get_media_info, parse_media_metadata, find_closest_profile, run_transcode
+from backend.app.transcoder import get_media_info, parse_media_metadata, find_closest_profile, run_transcode, check_if_transcode_needed
 
 logger = logging.getLogger("transvault.scheduler")
 
@@ -85,6 +85,11 @@ def scan_library():
                 # Check closest profile match
                 profile = find_closest_profile(db, meta["width"], meta["hdr_type"])
                 
+                status = "detected"
+                if profile and not check_if_transcode_needed(meta, profile, filename):
+                    status = "skipped"
+                    logger.info(f"Skipping {filename} automatically (already matches profile output settings)")
+                
                 movie = Movie(
                     relative_path=rel_path,
                     filename=filename,
@@ -92,12 +97,12 @@ def scan_library():
                     codec=meta["codec"],
                     resolution=meta["resolution"],
                     hdr_type=meta["hdr_type"],
-                    status="detected",
+                    status=status,
                     matched_profile_id=profile.id if profile else None
                 )
                 db.add(movie)
                 db.commit()
-                logger.info(f"Added {filename} to database with status 'detected'")
+                logger.info(f"Added {filename} to database with status '{status}'")
             except Exception as e:
                 logger.error(f"Failed to process newly discovered file {rel_path}: {e}")
                 

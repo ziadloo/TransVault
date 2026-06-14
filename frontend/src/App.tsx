@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
   RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
-  ArrowRight, Sliders, AlertCircle, Download, Loader2
+  ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit
 } from 'lucide-react';
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting } from './api';
@@ -310,6 +310,7 @@ function App() {
   
   // Create Profile state
   const [showCreateProfileModal, setShowCreateProfileModal] = useState(false);
+  const [editingProfileId, setEditingProfileId] = useState<number | null>(null);
   const [newProfile, setNewProfile] = useState({
     name: '',
     description: '',
@@ -483,8 +484,13 @@ function App() {
   const handleCreateProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.createProfile(newProfile);
+      if (editingProfileId !== null) {
+        await api.updateProfile(editingProfileId, newProfile);
+      } else {
+        await api.createProfile(newProfile);
+      }
       setShowCreateProfileModal(false);
+      setEditingProfileId(null);
       setNewProfile({
         name: '',
         description: '',
@@ -504,7 +510,7 @@ function App() {
       });
       fetchData();
     } catch (err) {
-      alert('Failed to create profile');
+      alert(editingProfileId !== null ? 'Failed to update profile' : 'Failed to create profile');
     }
   };
 
@@ -537,6 +543,50 @@ function App() {
         alert('Failed to delete profile');
       }
     }
+  };
+
+  const handleEditProfileClick = (p: Profile) => {
+    setEditingProfileId(p.id);
+    setNewProfile({
+      name: p.name,
+      description: p.description || '',
+      resolution_min_width: p.resolution_min_width,
+      resolution_max_width: p.resolution_max_width,
+      hdr_matching: p.hdr_matching,
+      video_codec: p.video_codec,
+      video_quality_type: p.video_quality_type,
+      video_quality_value: p.video_quality_value,
+      ffmpeg_preset: p.ffmpeg_preset,
+      audio_languages: p.audio_languages,
+      audio_codec: p.audio_codec,
+      audio_bitrate: p.audio_bitrate,
+      subtitle_languages: p.subtitle_languages,
+      strip_image_subs: p.strip_image_subs,
+      custom_ffmpeg_args: p.custom_ffmpeg_args || ''
+    });
+    setShowCreateProfileModal(true);
+  };
+
+  const handleCreateProfileClick = () => {
+    setEditingProfileId(null);
+    setNewProfile({
+      name: '',
+      description: '',
+      resolution_min_width: 0,
+      resolution_max_width: 99999,
+      hdr_matching: 'any',
+      video_codec: 'av1_qsv',
+      video_quality_type: 'crf',
+      video_quality_value: 22,
+      ffmpeg_preset: 'medium',
+      audio_languages: 'eng',
+      audio_codec: 'copy',
+      audio_bitrate: '640k',
+      subtitle_languages: 'eng',
+      strip_image_subs: true,
+      custom_ffmpeg_args: ''
+    });
+    setShowCreateProfileModal(true);
   };
 
   const handleSaveSettings = async () => {
@@ -1144,7 +1194,7 @@ function App() {
                   </div>
 
                   <button
-                    onClick={() => setShowCreateProfileModal(true)}
+                    onClick={handleCreateProfileClick}
                     className="px-3.5 py-2 bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-500 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-violet-950/20 transition flex items-center space-x-1.5"
                   >
                     <Plus className="h-4 w-4" />
@@ -1160,21 +1210,25 @@ function App() {
                           <div>
                             <div className="flex items-center space-x-2">
                               <h3 className="font-extrabold text-zinc-200 text-sm">{p.name}</h3>
-                              {p.is_system && (
-                                <span className="text-[9px] bg-zinc-850 text-zinc-400 border border-zinc-750 px-1 py-0.2 rounded font-bold uppercase tracking-wider">System</span>
-                              )}
                             </div>
                             <p className="text-zinc-500 text-[11px] mt-1">{p.description || 'No description provided.'}</p>
                           </div>
-                          {!p.is_system && (
+                          <div className="flex items-center space-x-1.5">
+                            <button
+                              onClick={() => handleEditProfileClick(p)}
+                              className="p-1.5 bg-zinc-950 hover:bg-violet-950 border border-zinc-850 hover:border-violet-900 text-zinc-500 hover:text-violet-400 rounded-lg transition cursor-pointer"
+                              title="Edit Profile"
+                            >
+                              <Edit className="h-4 w-4" />
+                            </button>
                             <button
                               onClick={() => handleDeleteProfile(p.id)}
-                              className="p-1.5 bg-zinc-950 hover:bg-rose-950 border border-zinc-850 hover:border-rose-900 text-zinc-500 hover:text-rose-400 rounded-lg transition"
+                              className="p-1.5 bg-zinc-950 hover:bg-rose-950 border border-zinc-850 hover:border-rose-900 text-zinc-500 hover:text-rose-400 rounded-lg transition cursor-pointer"
                               title="Delete Profile"
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>
-                          )}
+                          </div>
                         </div>
 
                         {/* Profile metrics grid */}
@@ -1339,8 +1393,8 @@ function App() {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto shadow-2xl flex flex-col justify-between">
             <div className="p-6 border-b border-zinc-800">
-              <h3 className="font-extrabold text-md text-zinc-200">Compose Transcoding Profile</h3>
-              <p className="text-zinc-500 text-xs mt-0.5">Compose rules for selecting video presets and track modifications.</p>
+              <h3 className="font-extrabold text-md text-zinc-200">{editingProfileId !== null ? 'Edit Transcoding Profile' : 'Compose Transcoding Profile'}</h3>
+              <p className="text-zinc-500 text-xs mt-0.5">{editingProfileId !== null ? 'Modify rules for selecting video presets and track modifications.' : 'Compose rules for selecting video presets and track modifications.'}</p>
             </div>
             
             <form onSubmit={handleCreateProfile} className="p-6 space-y-4 text-xs flex-grow">
@@ -1472,7 +1526,7 @@ function App() {
                   type="submit"
                   className="px-4 py-2 bg-violet-600 hover:bg-violet-500 text-white rounded-lg font-bold shadow-md shadow-violet-950/20"
                 >
-                  Create
+                  {editingProfileId !== null ? 'Save' : 'Create'}
                 </button>
               </div>
             </form>

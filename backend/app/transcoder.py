@@ -141,11 +141,88 @@ def find_closest_profile(db: Session, width: int, hdr_type: str) -> Optional[Pro
     if not matched_profiles:
         # Fallback to system default profile (e.g., system 1080p SDR)
         system_default = db.query(Profile).filter(Profile.is_system == True).first()
+        if not system_default:
+            system_default = db.query(Profile).first()
         return system_default
         
     # Return the profile with the narrowest matching width range (closest fit)
     matched_profiles.sort(key=lambda x: x[1])
     return matched_profiles[0][0]
+
+def check_if_transcode_needed(media_info: dict, profile: Profile, filename: str) -> bool:
+    """
+    Checks if transcoding is actually needed for a given file and profile.
+    Returns True if transcoding/remuxing is needed, False if the file already has
+    the expected settings (and thus can be skipped).
+    """
+    # 1. Check video codec
+    source_vcodec = media_info.get("codec", "").lower()
+    if source_vcodec == "h265":
+        source_vcodec = "hevc"
+        
+    target_vcodec = profile.video_codec.lower()
+    if "av1" in target_vcodec:
+        target_vcodec_norm = "av1"
+    elif "hevc" in target_vcodec or "x265" in target_vcodec:
+        target_vcodec_norm = "hevc"
+    elif "h264" in target_vcodec or "x264" in target_vcodec:
+        target_vcodec_norm = "h264"
+    elif target_vcodec == "copy":
+        target_vcodec_norm = source_vcodec
+    else:
+        target_vcodec_norm = target_vcodec
+
+    if source_vcodec != target_vcodec_norm:
+        return True
+
+    # 2. Check container extension
+    target_ext = ".mkv"
+    file_ext = os.path.splitext(filename.lower())[1]
+    if file_ext != target_ext:
+        return True
+
+    # 3. Check if any audio tracks would be filtered out or transcoded
+    audio_langs = [l.strip().lower() for l in profile.audio_languages.split(",") if l.strip()]
+    audio_streams = media_info.get("audio_streams", [])
+    
+    matched_audio_indices = []
+    for lang in audio_langs:
+        langs_found = [s for s in audio_streams if s["language"].lower() == lang]
+        langs_found.sort(key=lambda s: s["channels"], reverse=True)
+        if langs_found:
+            matched_audio_indices.append(langs_found[0]["index"])
+            if len(langs_found) > 1 and langs_found[1]["channels"] == 2:
+                matched_audio_indices.append(langs_found[1]["index"])
+                
+    if not matched_audio_indices and audio_streams:
+        matched_audio_indices.append(audio_streams[0]["index"])
+
+    if len(audio_streams) != len(matched_audio_indices):
+        return True
+
+    for idx in matched_audio_indices:
+        stream = next((s for s in audio_streams if s["index"] == idx), None)
+        if stream:
+            source_acodec = stream["codec"].lower()
+            if profile.audio_codec != "copy" and source_acodec != profile.audio_codec.lower():
+                return True
+
+    # 4. Check subtitle tracks
+    sub_langs = [l.strip().lower() for l in profile.subtitle_languages.split(",") if l.strip()]
+    subtitle_streams = media_info.get("subtitle_streams", [])
+    
+    matched_sub_indices = []
+    for s in subtitle_streams:
+        codec_name = s["codec"].lower()
+        if profile.strip_image_subs and ("pgs" in codec_name or "dvd" in codec_name or "hdmv" in codec_name):
+            continue
+        if s["language"].lower() in sub_langs:
+            matched_sub_indices.append(s["index"])
+
+    if len(subtitle_streams) != len(matched_sub_indices):
+        return True
+
+    return False
 
 def build_ffmpeg_command(input_file: str, output_file: str, profile: Profile, media_info: dict) -> list:
     """Build the FFmpeg CLI command based on the matched profile and movie streams."""
@@ -298,6 +375,14 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
                 raise RuntimeError("No matching transcode profiles found.")
             movie.matched_profile_id = profile.id
             db.commit()
+            
+        # Check if transcoding is actually needed
+        if not check_if_transcode_needed(media_metadata, profile, movie.filename):
+            logger.info(f"Skipping transcode for {movie.filename} (already matches profile output settings)")
+            movie.status = "skipped"
+            movie.transcode_started_at = None
+            db.commit()
+            return
             
         # Target extension is set based on the profile video/audio formats. Default is mkv.
         target_ext = ".mkv"

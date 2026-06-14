@@ -166,6 +166,16 @@ export const api = {
     return res.json();
   },
 
+  updateProfile: async (profileId: number, profile: Partial<Omit<Profile, 'id' | 'is_system' | 'added_at'>>): Promise<Profile> => {
+    const res = await fetch(`${API_BASE}/profiles/${profileId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(profile),
+    });
+    if (!res.ok) throw new Error('Failed to update profile');
+    return res.json();
+  },
+
   deleteProfile: async (profileId: number): Promise<void> => {
     const res = await fetch(`${API_BASE}/profiles/${profileId}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Failed to delete profile');
