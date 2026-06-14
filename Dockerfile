@@ -17,7 +17,13 @@ ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /app
 
 # Install system dependencies including FFmpeg, Intel Media Drivers and VA-API
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
+        sed -i 's/Components: main/Components: main contrib non-free non-free-firmware/g' /etc/apt/sources.list.d/debian.sources; \
+    fi && \
+    if [ -f /etc/apt/sources.list ]; then \
+        sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list; \
+    fi && \
+    apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     intel-media-driver \
     va-driver-all \
