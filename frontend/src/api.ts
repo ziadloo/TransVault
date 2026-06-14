@@ -87,6 +87,7 @@ export interface DashboardStats {
       fps: number;
       speed: string;
       profile_name: string;
+      started_at?: string;
     };
   };
 }

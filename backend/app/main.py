@@ -16,7 +16,7 @@ from backend.app.schemas import (
     SettingResponse, SettingUpdate, DashboardStats
 )
 from backend.app.scheduler import init_scheduler, shutdown_scheduler, active_job, scan_library
-from backend.app.transcoder import approve_transcode, reject_transcode
+from backend.app.transcoder import approve_transcode, reject_transcode, stop_transcode
 
 # Initialize logger
 logger = logging.getLogger("transvault.main")
@@ -210,7 +210,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
                 "progress": active_job["progress"],
                 "fps": active_job["fps"],
                 "speed": active_job["speed"],
-                "profile_name": m.matched_profile.name if m.matched_profile else "Dynamic Match"
+                "profile_name": m.matched_profile.name if m.matched_profile else "Dynamic Match",
+                "started_at": m.transcode_started_at.isoformat() + "Z" if m.transcode_started_at else None
             }
 
     return {
@@ -271,6 +272,17 @@ def reset_movie_status(movie_id: int, db: Session = Depends(get_db)):
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
         
+    # Stop active transcode subprocess if it is running
+    stop_transcode(movie_id)
+    
+    # Reset active job tracker state in the scheduler if this movie is the active job
+    if active_job["movie_id"] == movie_id:
+        active_job["movie_id"] = None
+        active_job["progress"] = 0.0
+        active_job["fps"] = 0.0
+        active_job["speed"] = "0.0x"
+        active_job["thread"] = None
+
     movie.status = "detected"
     movie.transcode_started_at = None
     movie.transcode_completed_at = None

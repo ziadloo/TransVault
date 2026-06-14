@@ -13,6 +13,9 @@ from backend.app.models import Movie, Profile
 logger = logging.getLogger("transvault.transcoder")
 logging.basicConfig(level=logging.INFO)
 
+# Global tracking of active FFmpeg subprocesses
+active_processes = {}
+
 def get_media_info(file_path: str):
     """Probe media file using ffprobe and return metadata."""
     if not os.path.exists(file_path):
@@ -317,6 +320,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
             universal_newlines=True,
             bufsize=1
         )
+        active_processes[movie_id] = process
         
         duration = media_metadata["duration"]
         logs = []
@@ -350,6 +354,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
                     progress_callback(progress_percent, fps, speed)
                     
         process.wait()
+        active_processes.pop(movie_id, None)
         
         if process.returncode != 0:
             raise RuntimeError(f"FFmpeg transcode failed with exit code {process.returncode}")
@@ -386,6 +391,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
         logger.info(f"Transcode of {movie.filename} complete. Pending approval.")
         
     except Exception as e:
+        active_processes.pop(movie_id, None)
         logger.exception("Transcoding execution error")
         movie.status = "manual_matching"
         movie.error_message = str(e)
@@ -399,6 +405,22 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
                 os.remove(temp_output_path)
             except Exception as cleanup_err:
                 logger.error(f"Failed to cleanup temp file {temp_output_path}: {cleanup_err}")
+
+def stop_transcode(movie_id: int):
+    """Terminates the active FFmpeg subprocess for the given movie ID."""
+    process = active_processes.get(movie_id)
+    if process:
+        logger.info(f"Terminating FFmpeg process for movie ID {movie_id}")
+        try:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                logger.warning(f"Process for movie ID {movie_id} did not terminate. Killing it.")
+                process.kill()
+                process.wait()
+        except Exception as e:
+            logger.error(f"Failed to terminate FFmpeg process for movie ID {movie_id}: {e}")
 
 def approve_transcode(db: Session, movie_id: int):
     """Approves a transcoded movie, deleting the original from the vault."""

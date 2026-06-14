@@ -270,6 +270,30 @@ function ApprovalCard({ movie, onApprove, onReject, onViewLogs, formatBytes }: A
   );
 }
 
+function formatRemainingTime(startedAt: string | undefined, progress: number): string {
+  if (!startedAt || progress <= 0) return 'Estimating remaining time...';
+  const start = new Date(startedAt).getTime();
+  const now = Date.now();
+  const elapsed = (now - start) / 1000;
+  if (elapsed <= 0) return 'Estimating remaining time...';
+  
+  const totalEstimated = elapsed / (progress / 100);
+  const remaining = totalEstimated - elapsed;
+  if (remaining <= 0) return 'Almost done...';
+  
+  if (remaining < 60) {
+    return `Remaining: ${Math.round(remaining)}s`;
+  }
+  const remainingMinutes = Math.floor(remaining / 60);
+  const remainingSeconds = Math.round(remaining % 60);
+  if (remainingMinutes < 60) {
+    return `Remaining: ${remainingMinutes}m ${remainingSeconds}s`;
+  }
+  const remainingHours = Math.floor(remainingMinutes / 60);
+  const finalMinutes = remainingMinutes % 60;
+  return `Remaining: ${remainingHours}h ${finalMinutes}m`;
+}
+
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'approvals' | 'library' | 'profiles' | 'settings'>('dashboard');
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -743,7 +767,7 @@ function App() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-xs font-mono font-medium">
                         <span className="text-amber-400">{stats.gpu_status.active_job.progress}% Complete</span>
-                        <span className="text-zinc-500">Estimating remaining time...</span>
+                        <span className="text-zinc-500">{formatRemainingTime(stats.gpu_status.active_job.started_at, stats.gpu_status.active_job.progress)}</span>
                       </div>
                       <div className="w-full bg-zinc-900 h-3.5 rounded-full overflow-hidden border border-zinc-800 p-0.5">
                         <div 
