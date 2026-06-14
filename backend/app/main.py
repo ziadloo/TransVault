@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 
 from backend.app.config import settings
-from backend.app.database import engine, Base, get_db
+from backend.app.database import engine, Base, get_db, SessionLocal
 from backend.app.models import Movie, Profile, Setting
 from backend.app.schemas import (
     MovieResponse, ProfileResponse, ProfileCreate, ProfileUpdate,
