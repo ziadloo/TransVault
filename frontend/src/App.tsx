@@ -553,7 +553,7 @@ function App() {
 
   const handleResetMovie = async (id: number) => {
     try {
-      await fetch(`${import.meta.env.DEV ? 'http://localhost:8080/api' : '/api'}/movies/${id}/reset`, { method: 'POST' });
+      await api.resetMovie(id);
       fetchData();
     } catch (err) {
       alert('Reset status failed');
@@ -708,7 +708,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.4'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.5'}</span>
             </div>
           </div>
           
@@ -877,16 +877,31 @@ function App() {
                         <p className="text-xs text-zinc-400 mt-0.5">Matched Profile: <strong className="text-zinc-300">{stats.gpu_status.active_job.profile_name}</strong></p>
                       </div>
                       
-                      <div className="flex items-center space-x-6 bg-zinc-900/80 px-4 py-2.5 rounded-xl border border-zinc-800 self-start md:self-auto text-sm">
-                        <div>
-                          <span className="block text-[10px] text-zinc-500 uppercase tracking-wider">Frames per Sec</span>
-                          <strong className="text-amber-400 font-mono text-base">{stats.gpu_status.active_job.fps}</strong>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex items-center space-x-6 bg-zinc-900/80 px-4 py-2.5 rounded-xl border border-zinc-800 text-sm">
+                          <div>
+                            <span className="block text-[10px] text-zinc-500 uppercase tracking-wider">Frames per Sec</span>
+                            <strong className="text-amber-400 font-mono text-base">{stats.gpu_status.active_job.fps}</strong>
+                          </div>
+                          <div className="border-l border-zinc-800 h-8"></div>
+                          <div>
+                            <span className="block text-[10px] text-zinc-500 uppercase tracking-wider">Transcoding Speed</span>
+                            <strong className="text-zinc-200 font-mono text-base">{stats.gpu_status.active_job.speed}</strong>
+                          </div>
                         </div>
-                        <div className="border-l border-zinc-800 h-8"></div>
-                        <div>
-                          <span className="block text-[10px] text-zinc-500 uppercase tracking-wider">Transcoding Speed</span>
-                          <strong className="text-zinc-200 font-mono text-base">{stats.gpu_status.active_job.speed}</strong>
-                        </div>
+
+                        <button
+                          onClick={() => {
+                            const jobId = stats?.gpu_status.active_job?.id;
+                            if (jobId && window.confirm("Are you sure you want to cancel the current transcoding job? This will reset the movie's status.")) {
+                              handleResetMovie(jobId);
+                            }
+                          }}
+                          className="flex items-center space-x-1.5 px-3 py-2.5 bg-rose-950/80 hover:bg-rose-900 border border-rose-800/60 text-rose-200 hover:text-white rounded-xl font-semibold text-xs transition-all duration-200 shadow-md shadow-rose-950/20 self-stretch md:self-auto justify-center"
+                        >
+                          <XCircle className="h-4 w-4 text-rose-400" />
+                          <span>Cancel Job</span>
+                        </button>
                       </div>
                     </div>
 

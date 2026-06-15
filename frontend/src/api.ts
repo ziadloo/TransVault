@@ -223,5 +223,10 @@ export const api = {
   getTranscodedDownloadUrl: (movieId: number): string => {
     return `${API_BASE}/movies/${movieId}/download/transcoded`;
   },
+
+  resetMovie: async (movieId: number): Promise<void> => {
+    const res = await fetch(`${API_BASE}/movies/${movieId}/reset`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to reset movie status');
+  },
 };
 
