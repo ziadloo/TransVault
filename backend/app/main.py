@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title=settings.app_name, version="1.0.1")
+app = FastAPI(title=settings.app_name, version="1.0.2")
 
 # CORS middleware for development
 app.add_middleware(
