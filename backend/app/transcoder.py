@@ -231,7 +231,19 @@ def build_ffmpeg_command(input_file: str, output_file: str, profile: Profile, me
     # 1. Hardware acceleration flags if using Intel QSV
     is_qsv = profile.video_codec in ["av1_qsv", "hevc_qsv", "h264_qsv"]
     if is_qsv:
-        cmd.extend(["-init_hw_device", "qsv=qsv", "-filter_hw_device", "qsv"])
+        # Determine DRI device path (renderD128 is preferred, fallback to card0)
+        dri_device = "/dev/dri/renderD128"
+        if not os.path.exists(dri_device) and os.path.exists("/dev/dri/card0"):
+            dri_device = "/dev/dri/card0"
+            
+        if os.path.exists(dri_device):
+            cmd.extend([
+                "-init_hw_device", f"vaapi=va:{dri_device}",
+                "-init_hw_device", "qsv=qsv@va",
+                "-filter_hw_device", "qsv"
+            ])
+        else:
+            cmd.extend(["-init_hw_device", "qsv=qsv", "-filter_hw_device", "qsv"])
         
     # Input file
     cmd.extend(["-i", input_file])
