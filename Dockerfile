@@ -31,6 +31,7 @@ RUN if [ -f /etc/apt/sources.list.d/debian.sources ]; then \
     apt-get update && \
     (apt-get install -y --no-install-recommends jellyfin-ffmpeg7 || apt-get install -y --no-install-recommends jellyfin-ffmpeg6) && \
     apt-get install -y --no-install-recommends \
+    gosu \
     intel-media-va-driver-non-free \
     va-driver-all \
     libva-drm2 \
@@ -54,6 +55,10 @@ COPY backend/app/ /app/backend/app/
 # Copy compiled frontend from Stage 1
 COPY --from=frontend-builder /app/frontend/dist /app/frontend/dist
 
+# Copy entrypoint script
+COPY entrypoint.sh /app/entrypoint.sh
+RUN chmod +x /app/entrypoint.sh
+
 # Expose port
 EXPOSE 8080
 
@@ -61,4 +66,4 @@ EXPOSE 8080
 ENV LIBVA_DRIVER_NAME=iHD
 
 # Run App
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+ENTRYPOINT ["/app/entrypoint.sh"]
