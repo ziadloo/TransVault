@@ -708,7 +708,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.7'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.8'}</span>
             </div>
           </div>
           

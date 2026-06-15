@@ -28,6 +28,9 @@ if [ "$PUID" -ne 0 ] && [ "$PGID" -ne 0 ]; then
     
     # Add user to DRI/render groups if they exist to support hardware acceleration
     if [ -e /dev/dri ]; then
+        # Ensure the transvault-user can access the DRI nodes by opening permissions
+        chmod -R 777 /dev/dri 2>/dev/null || true
+        
         # Check render GID
         RENDER_DEV="/dev/dri/renderD128"
         if [ ! -e "$RENDER_DEV" ]; then
