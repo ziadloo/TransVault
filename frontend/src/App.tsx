@@ -299,6 +299,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'approvals' | 'library' | 'profiles' | 'settings'>('dashboard');
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
+  const [pendingApprovals, setPendingApprovals] = useState<Movie[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [suggestedProfiles, setSuggestedProfiles] = useState<ProfileSuggestion[]>([]);
   const [_, setSettingsList] = useState<Setting[]>([]);
@@ -381,10 +382,14 @@ function App() {
       } else if (activeTab === 'approvals') {
         const pendingList = await api.getMovies('pending_approval');
         setMovies(pendingList);
+        setPendingApprovals(pendingList);
       } else if (activeTab === 'dashboard') {
-        // Fetch recently transcoding or pending
-        const allList = await api.getMovies();
+        const [allList, approvalList] = await Promise.all([
+          api.getMovies(),
+          api.getMovies('pending_approval'),
+        ]);
         setMovies(allList);
+        setPendingApprovals(approvalList);
       }
 
       setLoading(false);
@@ -435,9 +440,14 @@ function App() {
           } else if (activeTab === 'approvals') {
             const pendingList = await api.getMovies('pending_approval');
             setMovies(pendingList);
+            setPendingApprovals(pendingList);
           } else if (activeTab === 'dashboard') {
-            const allList = await api.getMovies();
+            const [allList, approvalList] = await Promise.all([
+              api.getMovies(),
+              api.getMovies('pending_approval'),
+            ]);
             setMovies(allList);
+            setPendingApprovals(approvalList);
           }
         }
       } catch (err) {
@@ -959,15 +969,17 @@ function App() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between">
                       <h3 className="font-bold text-md text-zinc-300">Quick Approvals</h3>
-                      <button onClick={() => setActiveTab('approvals')} className="text-violet-400 hover:text-violet-300 text-xs font-semibold flex items-center space-x-0.5">
-                        <span>View all approvals</span>
-                        <ChevronRight className="h-3.5 w-3.5" />
-                      </button>
+                      {pendingApprovals.length > 0 && (
+                        <button onClick={() => setActiveTab('approvals')} className="text-violet-400 hover:text-violet-300 text-xs font-semibold flex items-center space-x-0.5">
+                          <span>View all approvals</span>
+                          <ChevronRight className="h-3.5 w-3.5" />
+                        </button>
+                      )}
                     </div>
 
                     <div className="space-y-3">
-                      {movies.filter(m => m.status === 'pending_approval').slice(0, 3).length > 0 ? (
-                        movies.filter(m => m.status === 'pending_approval').slice(0, 3).map(movie => {
+                      {pendingApprovals.slice(0, 3).length > 0 ? (
+                        pendingApprovals.slice(0, 3).map(movie => {
                           const saved = movie.file_size - (movie.transcoded_size || 0);
                           const pct = Math.round((saved / movie.file_size) * 100);
                           return (
@@ -1018,8 +1030,12 @@ function App() {
                       <div className="divide-y divide-zinc-800/80">
                         {(() => {
                           const recent = movies
-                            .filter(m => ['approved', 'transcoding', 'manual_matching'].includes(m.status))
-                            .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+                            .filter(m => ['approved', 'pending_approval', 'transcoding', 'manual_matching'].includes(m.status) && m.transcode_completed_at)
+                            .sort((a, b) => {
+                              const aTime = a.transcode_completed_at ? new Date(a.transcode_completed_at).getTime() : new Date(a.updated_at).getTime();
+                              const bTime = b.transcode_completed_at ? new Date(b.transcode_completed_at).getTime() : new Date(b.updated_at).getTime();
+                              return bTime - aTime;
+                            })
                             .slice(0, 5);
                           
                           return recent.length > 0 ? (
