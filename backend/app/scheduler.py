@@ -193,7 +193,8 @@ def check_queue_and_process():
                     db.commit()
                     
         if next_movie:
-            logger.info(f"Triggering transcode for {next_movie.filename} (ID: {next_movie.id})")
+            profile_name = next_movie.matched_profile.name if next_movie.matched_profile else "Dynamic Match"
+            logger.info(f"Triggering transcode for {next_movie.filename} (ID: {next_movie.id}) using profile: {profile_name}")
             active_job["movie_id"] = next_movie.id
             active_job["progress"] = 0.0
             active_job["fps"] = 0.0

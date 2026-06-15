@@ -75,6 +75,7 @@ function ApprovalCard({ movie, onApprove, onReject, onViewLogs, formatBytes }: A
           <h3 className="font-extrabold text-zinc-200 text-sm truncate" title={movie.filename}>
             {movie.filename}
           </h3>
+          <p className="text-zinc-500 text-[10px] mt-0.5">Profile: <strong className="text-zinc-400 font-semibold">{movie.matched_profile?.name || 'Dynamic Match'}</strong></p>
           <span className="text-[10px] text-zinc-500 font-mono select-all block truncate mt-0.5">
             {movie.relative_path}
           </span>
@@ -948,6 +949,7 @@ function App() {
                             <div key={movie.id} className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 flex justify-between items-center hover:border-zinc-700 transition-all">
                               <div className="max-w-[70%]">
                                 <h4 className="font-bold text-sm text-zinc-200 truncate">{movie.filename}</h4>
+                                <p className="text-zinc-500 text-[10px] mt-0.5">Profile: <strong className="text-zinc-400 font-semibold">{movie.matched_profile?.name || 'Dynamic Match'}</strong></p>
                                 <div className="flex items-center space-x-2 text-xs text-zinc-500 mt-1 font-mono">
                                   <span>{formatBytes(movie.file_size)}</span>
                                   <ArrowRight className="h-3 w-3" />

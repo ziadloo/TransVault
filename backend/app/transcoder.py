@@ -395,6 +395,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
         
         # Build command
         cmd = build_ffmpeg_command(original_path, temp_output_path, profile, media_metadata)
+        logger.info(f"Starting transcode for {movie.filename} using profile '{profile.name}' (ID: {profile.id})")
         logger.info(f"Running FFmpeg: {' '.join(cmd)}")
         
         # Execute transcoding process with output parsing
@@ -409,7 +410,15 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
         active_processes[movie_id] = process
         
         duration = media_metadata["duration"]
-        logs = []
+        logs = [
+            f"[TransVault] Starting transcoding job for movie: {movie.filename}\n",
+            f"[TransVault] Matched Profile: {profile.name} (ID: {profile.id})\n",
+            f"[TransVault] Video settings: {profile.video_codec} ({profile.video_quality_type}: {profile.video_quality_value}, preset: {profile.ffmpeg_preset})\n",
+            f"[TransVault] Audio settings: {profile.audio_codec} (languages: {profile.audio_languages}, bitrate: {profile.audio_bitrate})\n",
+            f"[TransVault] Subtitle settings: languages: {profile.subtitle_languages}, strip image subs: {profile.strip_image_subs}\n",
+            f"[TransVault] Command: {' '.join(cmd)}\n",
+            "--------------------------------------------------------------------------------\n"
+        ]
         
         # Regular expressions to parse FFmpeg logs
         time_regex = re.compile(r"time=(\d+):(\d+):(\d+)\.(\d+)")
