@@ -25,7 +25,18 @@ logging.basicConfig(level=logging.INFO)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title=settings.app_name, version="1.0.6")
+def has_intel_gpu() -> bool:
+    import glob
+    for path in glob.glob("/sys/class/drm/card*/device/vendor") + glob.glob("/sys/class/drm/renderD*/device/vendor"):
+        try:
+            with open(path, "r") as f:
+                if f.read().strip().lower() == "0x8086":
+                    return True
+        except Exception:
+            pass
+    return False
+
+app = FastAPI(title=settings.app_name, version="1.0.7")
 
 # CORS middleware for development
 app.add_middleware(
@@ -192,10 +203,25 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
     # GPU status check
     gpu_status = {"detected": False, "name": "N/A", "temp": "N/A", "utilization": "N/A"}
     try:
-        # Check Intel GPU status via intel_gpu_top or VAAPI
-        if os.path.exists("/dev/dri"):
+        if has_intel_gpu():
             gpu_status["detected"] = True
             gpu_status["name"] = "Intel Graphics (/dev/dri)"
+        elif os.path.exists("/dev/dri"):
+            import glob
+            gpu_name = "Generic Graphics (/dev/dri)"
+            for path in glob.glob("/sys/class/drm/card*/device/vendor"):
+                try:
+                    with open(path, "r") as f:
+                        vendor = f.read().strip().lower()
+                        if vendor == "0x1002":
+                            gpu_name = "AMD Radeon Graphics (/dev/dri)"
+                            break
+                        elif vendor == "0x10de":
+                            gpu_name = "NVIDIA Graphics (/dev/dri)"
+                            break
+                except Exception:
+                    pass
+            gpu_status["name"] = gpu_name
     except Exception:
         pass
         
@@ -407,15 +433,16 @@ def list_suggested_profiles(db: Session = Depends(get_db)):
         if exists:
             continue
             
+        intel_available = has_intel_gpu()
         if res_label == "4K" or hdr_label == "HDR":
-            recommended_codec = "av1_qsv"
+            recommended_codec = "av1_qsv" if intel_available else "libsvtav1"
         elif res_label == "1080p":
-            recommended_codec = "hevc_qsv"
+            recommended_codec = "hevc_qsv" if intel_available else "libsvtav1"
         else:
-            recommended_codec = "h264_qsv"
+            recommended_codec = "h264_qsv" if intel_available else "libx264"
             
         suggestion = {
-            "name": f"Suggested: Intel QSV {res_label} {hdr_label} Optimizer",
+            "name": f"Suggested: {'Intel QSV' if intel_available else 'Software'} {res_label} {hdr_label} Optimizer",
             "description": f"Suggested profile optimized for {count} movie(s) with {res_label} {hdr_label} properties.",
             "resolution_min_width": min_w,
             "resolution_max_width": max_w,
@@ -423,7 +450,7 @@ def list_suggested_profiles(db: Session = Depends(get_db)):
             "video_codec": recommended_codec,
             "video_quality_type": "crf",
             "video_quality_value": 22 if hdr_label == "HDR" else 20,
-            "ffmpeg_preset": "medium",
+            "ffmpeg_preset": "medium" if (intel_available or recommended_codec == "libx264") else "6",
             "audio_languages": "eng",
             "audio_codec": "copy",
             "audio_bitrate": "640k",

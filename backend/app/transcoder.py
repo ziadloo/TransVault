@@ -16,6 +16,17 @@ logging.basicConfig(level=logging.INFO)
 # Global tracking of active FFmpeg subprocesses
 active_processes = {}
 
+def has_intel_gpu() -> bool:
+    import glob
+    for path in glob.glob("/sys/class/drm/card*/device/vendor") + glob.glob("/sys/class/drm/renderD*/device/vendor"):
+        try:
+            with open(path, "r") as f:
+                if f.read().strip().lower() == "0x8086":
+                    return True
+        except Exception:
+            pass
+    return False
+
 def get_media_info(file_path: str):
     """Probe media file using ffprobe and return metadata."""
     if not os.path.exists(file_path):
@@ -386,6 +397,17 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
             if not profile:
                 raise RuntimeError("No matching enabled transcode profiles found.")
             movie.matched_profile_id = profile.id
+            db.commit()
+            
+        # Log warning if Intel QSV is selected but no Intel GPU is detected
+        if profile.video_codec in ["av1_qsv", "hevc_qsv", "h264_qsv"] and not has_intel_gpu():
+            warning_msg = (
+                "[TransVault Warning] Intel QSV profile selected but no Intel GPU (vendor 0x8086) "
+                "was detected under /sys/class/drm or /dev/dri. Transcoding is highly likely to fail. "
+                "If you do not have an Intel GPU, please disable QSV profiles and use software/universal profiles instead."
+            )
+            logger.warning(warning_msg)
+            movie.transcode_logs = (movie.transcode_logs or "") + warning_msg + "\n"
             db.commit()
             
         # Check if transcoding is actually needed
