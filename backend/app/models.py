@@ -62,6 +62,8 @@ class Profile(Base):
     strip_image_subs = Column(Boolean, default=True)      # Strip PGS, keep SRT
     
     custom_ffmpeg_args = Column(Text, nullable=True)
+    scale_width = Column(Integer, nullable=True)
+    scale_height = Column(Integer, nullable=True)
     is_system = Column(Boolean, default=False)
     enabled = Column(Boolean, default=True)
     

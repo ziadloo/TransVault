@@ -42,6 +42,8 @@ export interface Profile {
   subtitle_languages: string;
   strip_image_subs: boolean;
   custom_ffmpeg_args?: string;
+  scale_width?: number | null;
+  scale_height?: number | null;
   is_system: boolean;
   enabled: boolean;
   added_at: string;

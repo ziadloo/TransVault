@@ -329,6 +329,8 @@ function App() {
     subtitle_languages: 'eng',
     strip_image_subs: true,
     custom_ffmpeg_args: '',
+    scale_width: null as number | null,
+    scale_height: null as number | null,
     enabled: true
   });
 
@@ -532,6 +534,8 @@ function App() {
         subtitle_languages: 'eng',
         strip_image_subs: true,
         custom_ffmpeg_args: '',
+        scale_width: null,
+        scale_height: null,
         enabled: true
       });
       fetchData();
@@ -598,6 +602,8 @@ function App() {
       subtitle_languages: p.subtitle_languages,
       strip_image_subs: p.strip_image_subs,
       custom_ffmpeg_args: p.custom_ffmpeg_args || '',
+      scale_width: p.scale_width ?? null,
+      scale_height: p.scale_height ?? null,
       enabled: p.enabled
     });
     setShowCreateProfileModal(true);
@@ -621,6 +627,8 @@ function App() {
       subtitle_languages: 'eng',
       strip_image_subs: true,
       custom_ffmpeg_args: '',
+      scale_width: null,
+      scale_height: null,
       enabled: true
     });
     setShowCreateProfileModal(true);
@@ -644,6 +652,8 @@ function App() {
       subtitle_languages: s.subtitle_languages,
       strip_image_subs: s.strip_image_subs,
       custom_ffmpeg_args: s.custom_ffmpeg_args || '',
+      scale_width: null,
+      scale_height: null,
       enabled: true
     });
     setShowCreateProfileModal(true);
@@ -1339,6 +1349,9 @@ function App() {
                               <p>Video: {p.video_codec.toUpperCase()}</p>
                               <p>Quality: {p.video_quality_type.toUpperCase()} {p.video_quality_value}</p>
                               <p>Preset: {p.ffmpeg_preset}</p>
+                              {(p.scale_width || p.scale_height) && (
+                                <p className="text-amber-400">Scale: {p.scale_width || 'auto'}×{p.scale_height || 'auto'}</p>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -1644,6 +1657,58 @@ function App() {
                     className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
                   />
                 </div>
+
+                <div className="border-t border-zinc-850 col-span-2 my-2"></div>
+                <h4 className="font-extrabold text-xs text-zinc-300 col-span-2">Output Scaling <span className="font-normal text-zinc-500">(Optional)</span></h4>
+
+                <div className="col-span-2 flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    checked={newProfile.scale_width !== null || newProfile.scale_height !== null}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setNewProfile({...newProfile, scale_width: 1280, scale_height: 720});
+                      } else {
+                        setNewProfile({...newProfile, scale_width: null, scale_height: null});
+                      }
+                    }}
+                    className="h-4 w-4 text-violet-600 focus:ring-violet-500 border-zinc-800 rounded bg-zinc-950"
+                  />
+                  <label className="text-zinc-400 font-semibold">Resize output video to custom dimensions</label>
+                </div>
+
+                {(newProfile.scale_width !== null || newProfile.scale_height !== null) && (
+                  <>
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-semibold">Output Width (px)</label>
+                      <input
+                        type="number"
+                        placeholder="Leave empty to auto-calculate"
+                        value={newProfile.scale_width ?? ''}
+                        onChange={(e) => setNewProfile({...newProfile, scale_width: e.target.value ? parseInt(e.target.value) : null})}
+                        className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                      />
+                      <span className="text-[10px] text-zinc-600 mt-0.5 block">Leave empty to auto-calculate from height (aspect ratio preserved)</span>
+                    </div>
+                    <div>
+                      <label className="block text-zinc-400 mb-1 font-semibold">Output Height (px)</label>
+                      <input
+                        type="number"
+                        placeholder="Leave empty to auto-calculate"
+                        value={newProfile.scale_height ?? ''}
+                        onChange={(e) => setNewProfile({...newProfile, scale_height: e.target.value ? parseInt(e.target.value) : null})}
+                        className="bg-zinc-950 border border-zinc-850 rounded-lg p-2 w-full focus:outline-none text-zinc-200"
+                      />
+                      <span className="text-[10px] text-zinc-600 mt-0.5 block">Leave empty to auto-calculate from width (aspect ratio preserved)</span>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="bg-amber-950/20 border border-amber-900/40 rounded-lg p-2.5 text-[10px] text-amber-300/80 flex items-start space-x-1.5">
+                        <AlertCircle className="h-3.5 w-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
+                        <span>At least one dimension (width or height) must be set. The other will be auto-calculated to preserve the original aspect ratio. For example, setting only Width to 1280 will scale a 1920×1080 video to 1280×720.</span>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 <div className="border-t border-zinc-850 col-span-2 my-2"></div>
                 <h4 className="font-extrabold text-xs text-zinc-300 col-span-2">Tracks Whitelist Rules</h4>

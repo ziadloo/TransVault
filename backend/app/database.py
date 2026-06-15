@@ -27,6 +27,14 @@ def run_migrations():
                 with engine.begin() as conn:
                     conn.execute(text("ALTER TABLE profiles ADD COLUMN enabled BOOLEAN DEFAULT 1"))
                 print("Database migration: Added 'enabled' column to 'profiles' table.")
+            if "scale_width" not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN scale_width INTEGER"))
+                print("Database migration: Added 'scale_width' column to 'profiles' table.")
+            if "scale_height" not in columns:
+                with engine.begin() as conn:
+                    conn.execute(text("ALTER TABLE profiles ADD COLUMN scale_height INTEGER"))
+                print("Database migration: Added 'scale_height' column to 'profiles' table.")
     except Exception as e:
         print(f"Migration error: {e}")
 

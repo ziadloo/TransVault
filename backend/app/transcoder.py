@@ -290,6 +290,12 @@ def build_ffmpeg_command(input_file: str, output_file: str, profile: Profile, me
         elif profile.video_quality_type == "bitrate":
             cmd.extend(["-b:v", f"{profile.video_quality_value}k"])
             
+    # 2b. Optional Output Scaling (resize video dimensions)
+    if profile.scale_width or profile.scale_height:
+        sw = profile.scale_width if profile.scale_width else -2
+        sh = profile.scale_height if profile.scale_height else -2
+        cmd.extend(["-vf", f"scale={sw}:{sh}"])
+            
     # 3. Audio Stream Whitelisting & Encoding
     audio_langs = [l.strip().lower() for l in profile.audio_languages.split(",") if l.strip()]
     audio_streams = media_info.get("audio_streams", [])

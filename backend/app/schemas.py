@@ -23,6 +23,8 @@ class ProfileBase(BaseModel):
     strip_image_subs: bool = True
     
     custom_ffmpeg_args: Optional[str] = None
+    scale_width: Optional[int] = None
+    scale_height: Optional[int] = None
     enabled: bool = True
 
 class ProfileCreate(ProfileBase):
@@ -44,6 +46,8 @@ class ProfileUpdate(BaseModel):
     subtitle_languages: Optional[str] = None
     strip_image_subs: Optional[bool] = None
     custom_ffmpeg_args: Optional[str] = None
+    scale_width: Optional[int] = None
+    scale_height: Optional[int] = None
     enabled: Optional[bool] = None
 
 class ProfileResponse(ProfileBase):
