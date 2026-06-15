@@ -193,6 +193,20 @@ def check_queue_and_process():
                     db.commit()
                     
         if next_movie:
+            # Re-match profile if the current one is disabled
+            if next_movie.matched_profile and not next_movie.matched_profile.enabled:
+                try:
+                    width = 1920
+                    if next_movie.resolution and "x" in next_movie.resolution:
+                        width = int(next_movie.resolution.split("x")[0])
+                    profile = find_closest_profile(db, width, next_movie.hdr_type)
+                    if profile:
+                        next_movie.matched_profile_id = profile.id
+                        db.commit()
+                        db.refresh(next_movie)
+                except Exception as e:
+                    logger.error(f"Error re-matching profile for queued movie {next_movie.id}: {e}")
+
             profile_name = next_movie.matched_profile.name if next_movie.matched_profile else "Dynamic Match"
             logger.info(f"Triggering transcode for {next_movie.filename} (ID: {next_movie.id}) using profile: {profile_name}")
             active_job["movie_id"] = next_movie.id

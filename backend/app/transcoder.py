@@ -369,10 +369,10 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
         
         # Resolve Profile
         profile = movie.matched_profile
-        if not profile:
+        if not profile or not profile.enabled:
             profile = find_closest_profile(db, media_metadata["width"], media_metadata["hdr_type"])
             if not profile:
-                raise RuntimeError("No matching transcode profiles found.")
+                raise RuntimeError("No matching enabled transcode profiles found.")
             movie.matched_profile_id = profile.id
             db.commit()
             
