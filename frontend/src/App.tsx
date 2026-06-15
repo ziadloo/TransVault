@@ -419,7 +419,7 @@ function App() {
         setStats(dashboardStats);
         
         // If something is active, also refresh lists
-        if (dashboardStats.gpu_status.active_job || activeTab === 'dashboard' || activeTab === 'approvals') {
+        if (dashboardStats.gpu_status.active_job?.id || activeTab === 'dashboard' || activeTab === 'approvals') {
           // Soft reload
           const profileList = await api.getProfiles();
           setProfiles(profileList);
@@ -443,7 +443,7 @@ function App() {
       }
     }, 3000);
     return () => clearInterval(interval);
-  }, [activeTab]);
+  }, [activeTab, searchQuery, libFilter]);
 
   const handleScan = async () => {
     setScanning(true);
@@ -708,7 +708,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v1.0.0</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.3'}</span>
             </div>
           </div>
           

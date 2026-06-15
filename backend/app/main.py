@@ -25,7 +25,7 @@ logging.basicConfig(level=logging.INFO)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title=settings.app_name, version="1.0.2")
+app = FastAPI(title=settings.app_name, version="1.0.3")
 
 # CORS middleware for development
 app.add_middleware(
@@ -222,7 +222,8 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
         "queued": queued,
         "transcoding": transcoding,
         "space_saved_bytes": space_saved,
-        "gpu_status": {**gpu_status, "active_job": active_details}
+        "gpu_status": {**gpu_status, "active_job": active_details},
+        "app_version": app.version
     }
 
 # --- Movies Endpoints ---

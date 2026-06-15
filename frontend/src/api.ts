@@ -95,6 +95,7 @@ export interface DashboardStats {
       started_at?: string;
     };
   };
+  app_version?: string;
 }
 
 export interface Setting {

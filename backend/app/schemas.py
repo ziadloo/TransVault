@@ -110,3 +110,4 @@ class DashboardStats(BaseModel):
     transcoding: int
     space_saved_bytes: int
     gpu_status: dict
+    app_version: str
