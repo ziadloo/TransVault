@@ -464,6 +464,19 @@ function App() {
     return () => clearInterval(interval);
   }, [activeTab, searchQuery, libFilter]);
 
+  // Lock body scroll when modals are open
+  useEffect(() => {
+    const isAnyModalOpen = showDocModal || showCreateProfileModal || activeLogs !== null;
+    if (isAnyModalOpen) {
+      document.body.classList.add('overflow-hidden');
+    } else {
+      document.body.classList.remove('overflow-hidden');
+    }
+    return () => {
+      document.body.classList.remove('overflow-hidden');
+    };
+  }, [showDocModal, showCreateProfileModal, activeLogs]);
+
   const handleScan = async () => {
     setScanning(true);
     try {
@@ -746,7 +759,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.12'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.13'}</span>
             </div>
           </div>
           
@@ -1836,8 +1849,15 @@ function App() {
 
       {/* DOCUMENTATION MODAL OVERLAY */}
       {showDocModal && (
-        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col justify-between">
+        <div 
+          onClick={() => setShowDocModal(false)}
+          className="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
+          style={{ backdropFilter: 'blur(9.6px)', WebkitBackdropFilter: 'blur(9.6px)' }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl flex flex-col"
+          >
             <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-extrabold text-zinc-100 flex items-center gap-2">
@@ -1854,7 +1874,7 @@ function App() {
               </button>
             </div>
 
-            <div className="p-6 space-y-6 text-xs text-zinc-300 overflow-y-auto max-h-[60vh] custom-scrollbar">
+            <div className="p-6 space-y-6 text-xs text-zinc-300 overflow-y-auto flex-grow custom-scrollbar">
               <section className="space-y-2">
                 <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 border-b border-zinc-800/80 pb-1">
                   <span className="h-2 w-2 rounded-full bg-violet-500"></span>
@@ -1933,15 +1953,6 @@ function App() {
                   <p><strong>Reject (Restore)</strong>: The transcoded file is discarded, and the original file is safely moved back from the vault to its original path in the library.</p>
                 </div>
               </section>
-            </div>
-
-            <div className="p-6 border-t border-zinc-800 bg-zinc-950/30 flex justify-end">
-              <button 
-                onClick={() => setShowDocModal(false)}
-                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-xl font-bold transition cursor-pointer"
-              >
-                Close Documentation
-              </button>
             </div>
           </div>
         </div>
