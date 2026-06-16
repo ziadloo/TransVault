@@ -258,19 +258,32 @@ def get_dashboard_stats(db: Session = Depends(get_db)):
 def list_movies(
     status: Optional[str] = None,
     search: Optional[str] = None,
+    sort_by: Optional[str] = None,
     limit: int = 100,
     offset: int = 0,
     db: Session = Depends(get_db)
 ):
     query = db.query(Movie)
     if status:
-        query = query.filter(Movie.status == status)
+        if "," in status:
+            status_list = [s.strip() for s in status.split(",") if s.strip()]
+            query = query.filter(Movie.status.in_(status_list))
+        else:
+            query = query.filter(Movie.status == status)
     if search:
         query = query.filter(
             (Movie.filename.ilike(f"%{search}%")) |
             (Movie.relative_path.ilike(f"%{search}%"))
         )
-    return query.order_by(Movie.added_at.desc()).offset(offset).limit(limit).all()
+    
+    if sort_by == "transcode_completed_at":
+        query = query.order_by(Movie.transcode_completed_at.desc())
+    elif sort_by == "updated_at":
+        query = query.order_by(Movie.updated_at.desc())
+    else:
+        query = query.order_by(Movie.added_at.desc())
+        
+    return query.offset(offset).limit(limit).all()
 
 @app.post("/api/movies/scan")
 def trigger_scan():

@@ -112,10 +112,11 @@ export const api = {
     return res.json();
   },
 
-  getMovies: async (status?: string, search?: string): Promise<Movie[]> => {
-    let url = `${API_BASE}/movies?limit=200`;
+  getMovies: async (status?: string, search?: string, sortBy?: string, limit: number = 200): Promise<Movie[]> => {
+    let url = `${API_BASE}/movies?limit=${limit}`;
     if (status) url += `&status=${status}`;
     if (search) url += `&search=${encodeURIComponent(search)}`;
+    if (sortBy) url += `&sort_by=${sortBy}`;
     const res = await fetch(url);
     if (!res.ok) throw new Error('Failed to fetch movies');
     return res.json();

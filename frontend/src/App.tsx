@@ -300,6 +300,7 @@ function App() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<Movie[]>([]);
+  const [recentTranscodes, setRecentTranscodes] = useState<Movie[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [suggestedProfiles, setSuggestedProfiles] = useState<ProfileSuggestion[]>([]);
   const [_, setSettingsList] = useState<Setting[]>([]);
@@ -384,12 +385,14 @@ function App() {
         setMovies(pendingList);
         setPendingApprovals(pendingList);
       } else if (activeTab === 'dashboard') {
-        const [allList, approvalList] = await Promise.all([
+        const [allList, approvalList, recentList] = await Promise.all([
           api.getMovies(),
           api.getMovies('pending_approval'),
+          api.getMovies('approved,pending_approval', undefined, 'transcode_completed_at', 10),
         ]);
         setMovies(allList);
         setPendingApprovals(approvalList);
+        setRecentTranscodes(recentList);
       }
 
       setLoading(false);
@@ -442,12 +445,14 @@ function App() {
             setMovies(pendingList);
             setPendingApprovals(pendingList);
           } else if (activeTab === 'dashboard') {
-            const [allList, approvalList] = await Promise.all([
+            const [allList, approvalList, recentList] = await Promise.all([
               api.getMovies(),
               api.getMovies('pending_approval'),
+              api.getMovies('approved,pending_approval', undefined, 'transcode_completed_at', 10),
             ]);
             setMovies(allList);
             setPendingApprovals(approvalList);
+            setRecentTranscodes(recentList);
           }
         }
       } catch (err) {
@@ -1054,14 +1059,7 @@ function App() {
                     <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl overflow-hidden">
                       <div className="divide-y divide-zinc-800/80">
                         {(() => {
-                          const recent = movies
-                            .filter(m => ['approved', 'pending_approval', 'transcoding', 'manual_matching'].includes(m.status) && m.transcode_completed_at)
-                            .sort((a, b) => {
-                              const aTime = a.transcode_completed_at ? new Date(a.transcode_completed_at).getTime() : new Date(a.updated_at).getTime();
-                              const bTime = b.transcode_completed_at ? new Date(b.transcode_completed_at).getTime() : new Date(b.updated_at).getTime();
-                              return bTime - aTime;
-                            })
-                            .slice(0, 5);
+                          const recent = recentTranscodes.slice(0, 5);
                           
                           return recent.length > 0 ? (
                             recent.map(m => (
