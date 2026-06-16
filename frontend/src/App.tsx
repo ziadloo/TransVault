@@ -744,7 +744,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.9'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.11'}</span>
             </div>
           </div>
           
@@ -782,11 +782,11 @@ function App() {
                 onClick={handleToggleAutoQueue}
                 className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
                   autoQueue 
-                    ? 'bg-amber-950/80 hover:bg-amber-900 text-amber-300 border-amber-800' 
-                    : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 border-zinc-800'
+                    ? 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-800' 
+                    : 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border-rose-800'
                 }`}
               >
-                <span className={`h-2 w-2 rounded-full ${autoQueue ? 'bg-amber-500 animate-pulse' : 'bg-zinc-600'}`}></span>
+                <span className={`h-2 w-2 rounded-full ${autoQueue ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
                 <span>{autoQueue ? 'Enqueue On' : 'Enqueue Off'}</span>
               </button>
 
@@ -1225,7 +1225,7 @@ function App() {
                                   className="bg-zinc-950 border border-zinc-800 text-zinc-300 rounded px-2 py-1 text-[11px] max-w-[180px] focus:outline-none focus:border-rose-500"
                                 >
                                   <option value="">Dynamic Search...</option>
-                                  {profiles.map(p => (
+                                  {profiles.filter(p => p.enabled || p.id === movie.matched_profile_id).map(p => (
                                     <option key={p.id} value={p.id}>{p.name}</option>
                                   ))}
                                 </select>
