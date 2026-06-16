@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
   RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
-  ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit, Power
+  ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit, Power,
+  BookOpen, X
 } from 'lucide-react';
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting, ProfileSuggestion } from './api';
@@ -314,6 +315,7 @@ function App() {
   
   // Create Profile state
   const [showCreateProfileModal, setShowCreateProfileModal] = useState(false);
+  const [showDocModal, setShowDocModal] = useState(false);
   const [editingProfileId, setEditingProfileId] = useState<number | null>(null);
   const [newProfile, setNewProfile] = useState({
     name: '',
@@ -744,7 +746,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.11'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.12'}</span>
             </div>
           </div>
           
@@ -1592,11 +1594,9 @@ function App() {
       {/* FOOTER */}
       <footer className="border-t border-zinc-900 bg-zinc-950 py-4 text-center text-[10px] text-zinc-600">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center justify-between">
-          <p>© 2026 TransVault Inc. Open source MIT license.</p>
+          <p>© 2026 TransVault Inc. Open source Apache License 2.0.</p>
           <div className="flex space-x-3">
-            <span className="hover:text-zinc-400 cursor-pointer">Documentation</span>
-            <span>•</span>
-            <span className="hover:text-zinc-400 cursor-pointer">Support Discord</span>
+            <span onClick={() => setShowDocModal(true)} className="hover:text-zinc-400 cursor-pointer">Documentation</span>
           </div>
         </div>
       </footer>
@@ -1829,6 +1829,119 @@ function App() {
             
             <div className="p-5 flex-grow overflow-auto bg-zinc-950 text-[11px] font-mono leading-relaxed text-zinc-400 border-b border-zinc-850 whitespace-pre-wrap select-text">
               {activeLogs.content}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DOCUMENTATION MODAL OVERLAY */}
+      {showDocModal && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-2xl w-full max-w-4xl max-h-[85vh] overflow-y-auto shadow-2xl flex flex-col justify-between">
+            <div className="p-6 border-b border-zinc-800 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-extrabold text-zinc-100 flex items-center gap-2">
+                  <BookOpen className="h-5 w-5 text-violet-400" />
+                  <span>TransVault Documentation</span>
+                </h2>
+                <p className="text-zinc-500 text-xs mt-1">Understanding system operations, workflows, and configuration options</p>
+              </div>
+              <button 
+                onClick={() => setShowDocModal(false)}
+                className="p-1.5 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 rounded-lg transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6 text-xs text-zinc-300 overflow-y-auto max-h-[60vh] custom-scrollbar">
+              <section className="space-y-2">
+                <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 border-b border-zinc-800/80 pb-1">
+                  <span className="h-2 w-2 rounded-full bg-violet-500"></span>
+                  1. System Overview
+                </h3>
+                <p className="leading-relaxed">
+                  TransVault is a self-hosted media library optimizer designed to automate high-efficiency video transcoding (such as AV1 and HEVC/H.265) to maximize disk space savings. It monitors a library directory for incoming files, processes them using hardware-accelerated (Intel QSV) or software encoders, and holds them in a secure <strong>Vault</strong> directory until you approve the replacement.
+                </p>
+              </section>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <section className="space-y-2">
+                  <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 border-b border-zinc-800/80 pb-1">
+                    <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                    2. Enqueue Operations (Ingestion)
+                  </h3>
+                  <p className="leading-relaxed mb-2">
+                    Ingestion manages how newly scanned videos enter the processing pipeline:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-1.5">
+                    <li><strong>Enqueue On (Active)</strong>: Library scans automatically match detected media files with active profiles and place them in the queue.</li>
+                    <li><strong>Enqueue Off (Disabled)</strong>: Media files are only scanned and registered in the database as <code>detected</code>. They remain idle until you manually click the <strong>Queue Job</strong> button next to the file.</li>
+                  </ul>
+                </section>
+
+                <section className="space-y-2">
+                  <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 border-b border-zinc-800/80 pb-1">
+                    <span className="h-2 w-2 rounded-full bg-rose-500"></span>
+                    3. Dequeue Operations (Processing)
+                  </h3>
+                  <p className="leading-relaxed mb-2">
+                    Processing handles how queued media is turned into active encoding tasks:
+                  </p>
+                  <ul className="list-disc pl-4 space-y-1.5">
+                    <li><strong>Dequeue On (Active)</strong>: The background task processor polls the database and processes queued movies one-by-one according to the selected profile rules.</li>
+                    <li><strong>Dequeue Off (Halted)</strong>: Pauses starting any new transcoding tasks. Any currently running encode will finish, but subsequent queued items will wait until dequeueing is toggled back on.</li>
+                  </ul>
+                </section>
+              </div>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 border-b border-zinc-800/80 pb-1">
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                  4. Transcode Profiles & Matching Rules
+                </h3>
+                <p className="leading-relaxed">
+                  Profiles define when and how media files are transcoded. Each profile contains:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
+                  <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-xl p-3">
+                    <h4 className="font-bold text-zinc-200 mb-1">Matching Criteria</h4>
+                    <p className="text-[11px] text-zinc-400">
+                      Files are automatically matched based on their <strong>resolution width</strong> (e.g., matching a 1080p band) and <strong>HDR type</strong> (matching SDR only, HDR only, or any).
+                    </p>
+                  </div>
+                  <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-xl p-3">
+                    <h4 className="font-bold text-zinc-200 mb-1">Encoding Parameters</h4>
+                    <p className="text-[11px] text-zinc-400">
+                      Defines the target video codec (e.g. AV1 QSV, HEVC QSV, SVT-AV1), CRF/QP quality index, presets, audio copy/transcoding language rules, and image subtitle stripping. Profiles can optionally scale the width and height of output files.
+                    </p>
+                  </div>
+                </div>
+              </section>
+
+              <section className="space-y-2">
+                <h3 className="text-sm font-bold text-zinc-100 flex items-center gap-1.5 border-b border-zinc-800/80 pb-1">
+                  <span className="h-2 w-2 rounded-full bg-blue-500"></span>
+                  5. Safe-Swap Approval Flow
+                </h3>
+                <p className="leading-relaxed">
+                  To prevent library corruption or quality loss, TransVault keeps the original and transcoded files side-by-side until you approve:
+                </p>
+                <div className="bg-zinc-950/40 border border-zinc-800/60 rounded-xl p-3 space-y-1.5">
+                  <p><strong>Pending Approval</strong>: The transcoding has finished. You can view side-by-side file sizes, compression savings, and execution logs.</p>
+                  <p><strong>Approve (Safe-Swap)</strong>: The original file is permanently deleted from the vault, and the transcoded file takes its place in the media library folder.</p>
+                  <p><strong>Reject (Restore)</strong>: The transcoded file is discarded, and the original file is safely moved back from the vault to its original path in the library.</p>
+                </div>
+              </section>
+            </div>
+
+            <div className="p-6 border-t border-zinc-800 bg-zinc-950/30 flex justify-end">
+              <button 
+                onClick={() => setShowDocModal(false)}
+                className="px-4 py-2 bg-zinc-800 hover:bg-zinc-750 text-zinc-200 rounded-xl font-bold transition cursor-pointer"
+              >
+                Close Documentation
+              </button>
             </div>
           </div>
         </div>

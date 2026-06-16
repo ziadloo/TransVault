@@ -36,7 +36,7 @@ def has_intel_gpu() -> bool:
             pass
     return False
 
-app = FastAPI(title=settings.app_name, version="1.0.11")
+app = FastAPI(title=settings.app_name, version="1.0.12")
 
 # CORS middleware for development
 app.add_middleware(
