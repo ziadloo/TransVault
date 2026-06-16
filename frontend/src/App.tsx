@@ -565,6 +565,17 @@ function App() {
     }
   };
 
+  const handleToggleAutoQueue = async () => {
+    try {
+      const newState = !autoQueue;
+      await api.updateSetting('auto_queue', newState.toString());
+      setAutoQueue(newState);
+      fetchData();
+    } catch (err) {
+      alert('Failed to toggle auto-queue state');
+    }
+  };
+
   const handleResetMovie = async (id: number) => {
     try {
       await api.resetMovie(id);
@@ -761,17 +772,31 @@ function App() {
               ))}
             </nav>
 
-            <button
-              onClick={handleToggleHalt}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
-                queueHalted 
-                  ? 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border-rose-800' 
-                  : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-800'
-              }`}
-            >
-              <span className={`h-2 w-2 rounded-full ${queueHalted ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`}></span>
-              <span>{queueHalted ? 'Queue Halted' : 'Queue Active'}</span>
-            </button>
+            <div className="flex items-center space-x-2">
+              <button
+                onClick={handleToggleAutoQueue}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
+                  autoQueue 
+                    ? 'bg-amber-950/80 hover:bg-amber-900 text-amber-300 border-amber-800' 
+                    : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 border-zinc-800'
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${autoQueue ? 'bg-amber-500 animate-pulse' : 'bg-zinc-600'}`}></span>
+                <span>{autoQueue ? 'Auto-Queue On' : 'Auto-Queue Off'}</span>
+              </button>
+
+              <button
+                onClick={handleToggleHalt}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center space-x-1.5 border cursor-pointer ${
+                  queueHalted 
+                    ? 'bg-rose-950/80 hover:bg-rose-900 text-rose-300 border-rose-800' 
+                    : 'bg-emerald-950/80 hover:bg-emerald-900 text-emerald-300 border-emerald-800'
+                }`}
+              >
+                <span className={`h-2 w-2 rounded-full ${queueHalted ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`}></span>
+                <span>{queueHalted ? 'Queue Halted' : 'Queue Active'}</span>
+              </button>
+            </div>
           </div>
         </div>
       </header>
