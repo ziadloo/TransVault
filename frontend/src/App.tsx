@@ -388,7 +388,7 @@ function App() {
         const [allList, approvalList, recentList] = await Promise.all([
           api.getMovies(),
           api.getMovies('pending_approval'),
-          api.getMovies('approved,pending_approval', undefined, 'transcode_completed_at', 10),
+          api.getMovies('approved', undefined, 'transcode_completed_at', 10),
         ]);
         setMovies(allList);
         setPendingApprovals(approvalList);
@@ -448,7 +448,7 @@ function App() {
             const [allList, approvalList, recentList] = await Promise.all([
               api.getMovies(),
               api.getMovies('pending_approval'),
-              api.getMovies('approved,pending_approval', undefined, 'transcode_completed_at', 10),
+              api.getMovies('approved', undefined, 'transcode_completed_at', 10),
             ]);
             setMovies(allList);
             setPendingApprovals(approvalList);
@@ -744,7 +744,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.8'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.9'}</span>
             </div>
           </div>
           
@@ -787,7 +787,7 @@ function App() {
                 }`}
               >
                 <span className={`h-2 w-2 rounded-full ${autoQueue ? 'bg-amber-500 animate-pulse' : 'bg-zinc-600'}`}></span>
-                <span>{autoQueue ? 'Auto-Queue On' : 'Auto-Queue Off'}</span>
+                <span>{autoQueue ? 'Enqueue On' : 'Enqueue Off'}</span>
               </button>
 
               <button
@@ -799,7 +799,7 @@ function App() {
                 }`}
               >
                 <span className={`h-2 w-2 rounded-full ${queueHalted ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`}></span>
-                <span>{queueHalted ? 'Queue Halted' : 'Queue Active'}</span>
+                <span>{queueHalted ? 'Dequeue Off' : 'Dequeue On'}</span>
               </button>
             </div>
           </div>
@@ -809,12 +809,12 @@ function App() {
       {queueHalted && (
         <div className="bg-rose-950/40 border-b border-rose-900/60 py-2.5 text-center text-xs text-rose-300 font-bold flex items-center justify-center space-x-2">
           <AlertCircle className="h-4 w-4 text-rose-400" />
-          <span>The Transvault Queue is currently halted. No new transcoding processes will start until resumed.</span>
+          <span>The Transvault Dequeue is currently off. No new transcoding processes will start until turned on.</span>
           <button 
             onClick={handleToggleHalt} 
             className="underline ml-2 text-rose-400 hover:text-white transition cursor-pointer"
           >
-            Resume Queue
+            Turn Dequeue On
           </button>
         </div>
       )}
