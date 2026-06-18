@@ -114,4 +114,5 @@ class DashboardStats(BaseModel):
     transcoding: int
     space_saved_bytes: int
     gpu_status: dict
+    temperatures: Optional[dict] = None
     app_version: str

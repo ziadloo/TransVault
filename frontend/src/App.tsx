@@ -8,6 +8,11 @@ import {
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting, ProfileSuggestion } from './api';
 
+export interface TempRecord {
+  timestamp: number;
+  temps: { [key: string]: number };
+}
+
 interface ApprovalCardProps {
   movie: Movie;
   onApprove: (id: number) => void;
@@ -298,6 +303,81 @@ function formatRemainingTime(startedAt: string | undefined, progress: number): s
 
 function App() {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'approvals' | 'library' | 'profiles' | 'settings'>('dashboard');
+  
+  // Temperature Tracking states
+  const [pollInterval, setPollInterval] = useState<number>(3000); // Poll API every 3s by default
+  const [tempHistory, setTempHistory] = useState<TempRecord[]>([]);
+  const [currentTime, setCurrentTime] = useState<number>(Date.now());
+  const [visibleCurves, setVisibleCurves] = useState<{ [key: string]: boolean }>({
+    'CPU': true,
+    'GPU': true,
+    'SSD (System)': true,
+    'HDD (Data 1)': true,
+    'HDD (Data 2)': true,
+  });
+  const [hoveredCurve, setHoveredCurve] = useState<string | null>(null);
+  const [hoverX, setHoverX] = useState<number | null>(null);
+
+  const addTempRecord = (temps: { [key: string]: number } | undefined) => {
+    if (!temps) return;
+    const now = Date.now();
+    setTempHistory(prev => {
+      // Keep only last 300 seconds of history (so 300px width max)
+      const cutoff = now - 300000;
+      const filtered = prev.filter(r => r.timestamp >= cutoff);
+      if (filtered.length > 0 && filtered[filtered.length - 1].timestamp === now) {
+        return filtered;
+      }
+      return [...filtered, { timestamp: now, temps }];
+    });
+  };
+
+  const getTempColor = (name: string, temp: number): string => {
+    if (name.includes('CPU')) {
+      if (temp >= 90) return '#ef4444'; // Red-500
+      if (temp >= 80) return '#f59e0b'; // Amber-500
+      return '#10b981'; // Emerald-500
+    }
+    if (name.includes('GPU')) {
+      if (temp >= 85) return '#ef4444';
+      if (temp >= 80) return '#f59e0b';
+      return '#10b981';
+    }
+    if (name.includes('SSD')) {
+      if (temp >= 70) return '#ef4444';
+      if (temp >= 60) return '#f59e0b';
+      return '#10b981';
+    }
+    if (name.includes('HDD')) {
+      if (temp >= 48) return '#ef4444';
+      if (temp >= 42) return '#f59e0b';
+      return '#10b981';
+    }
+    return '#10b981';
+  };
+
+  const getClosestRecord = (): { record: TempRecord; x: number } | null => {
+    if (hoverX === null || tempHistory.length === 0) return null;
+    let closestRecord: TempRecord | null = null;
+    let closestX = 0;
+    let minDiff = Infinity;
+
+    tempHistory.forEach(rec => {
+      const recX = 300 - (currentTime - rec.timestamp) / 1000;
+      if (recX >= 0 && recX <= 300) {
+        const diff = Math.abs(recX - hoverX);
+        if (diff < minDiff) {
+          minDiff = diff;
+          closestRecord = rec;
+          closestX = recX;
+        }
+      }
+    });
+
+    if (!closestRecord) return null;
+    return { record: closestRecord, x: closestX };
+  };
+
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [pendingApprovals, setPendingApprovals] = useState<Movie[]>([]);
@@ -355,6 +435,7 @@ function App() {
     try {
       const dashboardStats = await api.getStats();
       setStats(dashboardStats);
+      addTempRecord(dashboardStats.temperatures);
 
       const profileList = await api.getProfiles();
       setProfiles(profileList);
@@ -423,12 +504,13 @@ function App() {
     }
   }, [searchQuery, libFilter, activeTab]);
 
-  // Polling for live active job stats (every 3 seconds)
+  // Polling for live active job stats (user adjustable interval)
   useEffect(() => {
     const interval = setInterval(async () => {
       try {
         const dashboardStats = await api.getStats();
         setStats(dashboardStats);
+        addTempRecord(dashboardStats.temperatures);
         
         // If something is active, also refresh lists
         if (dashboardStats.gpu_status.active_job?.id || activeTab === 'dashboard' || activeTab === 'approvals') {
@@ -460,9 +542,17 @@ function App() {
       } catch (err) {
         console.error('Polling error:', err);
       }
-    }, 3000);
+    }, pollInterval);
     return () => clearInterval(interval);
-  }, [activeTab, searchQuery, libFilter]);
+  }, [activeTab, searchQuery, libFilter, pollInterval]);
+
+  // Local 1-second clock to shift the temperature chart X-axis continuously
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(Date.now());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   // Lock body scroll when modals are open
   useEffect(() => {
@@ -759,7 +849,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.13'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.14'}</span>
             </div>
           </div>
           
@@ -874,39 +964,298 @@ function App() {
               </div>
             </div>
             
-            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
-              <div className="flex items-center justify-between text-zinc-500 mb-2">
-                <span className="text-xs uppercase tracking-wider font-semibold">Saved Space</span>
-                <HardDrive className="h-4 w-4 text-emerald-500" />
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-zinc-500 mb-2">
+                  <span className="text-xs uppercase tracking-wider font-semibold">Saved Space</span>
+                  <HardDrive className="h-4 w-4 text-emerald-500" />
+                </div>
+                <div className="text-2xl font-bold text-emerald-400">{formatBytes(stats.space_saved_bytes)}</div>
               </div>
-              <div className="text-2xl font-bold text-emerald-400">{formatBytes(stats.space_saved_bytes)}</div>
-              <div className="text-xs text-emerald-500/80 mt-1 flex items-center space-x-1.5">
+              <div className="text-xs text-emerald-500/80 mt-2 flex items-center space-x-1.5 border-t border-zinc-850/30 pt-2">
                 <Check className="h-3.5 w-3.5" />
                 <span>Storage reclaimed</span>
               </div>
             </div>
             
-            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
-              <div className="flex items-center justify-between text-zinc-500 mb-2">
-                <span className="text-xs uppercase tracking-wider font-semibold">Pending Approval</span>
-                <CheckCircle className="h-4 w-4 text-violet-500" />
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-zinc-500 mb-2">
+                  <span className="text-xs uppercase tracking-wider font-semibold">Pending Approval</span>
+                  <CheckCircle className="h-4 w-4 text-violet-500" />
+                </div>
+                <div className="text-2xl font-bold text-violet-400">{stats.pending_approval}</div>
               </div>
-              <div className="text-2xl font-bold text-violet-400">{stats.pending_approval}</div>
-              <div className="text-xs text-violet-500/80 mt-1 flex items-center space-x-1.5">
+              <div className="text-xs text-violet-500/80 mt-2 flex items-center space-x-1.5 border-t border-zinc-850/30 pt-2">
                 <Clock className="h-3 w-3" />
                 <span>Awaiting safe-swap review</span>
               </div>
             </div>
 
-            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all">
-              <div className="flex items-center justify-between text-zinc-500 mb-2">
-                <span className="text-xs uppercase tracking-wider font-semibold">Intel GPU / Hardware</span>
+            <div className="bg-zinc-900/40 border border-zinc-800 rounded-xl p-5 hover:border-zinc-700/60 transition-all flex flex-col justify-between h-full min-h-[340px]">
+              <div>
+                <div className="flex items-center justify-between text-zinc-500 mb-2.5">
+                  <span className="text-xs uppercase tracking-wider font-semibold">Hardware Temps</span>
+                  
+                  {/* Poll Speed Selector */}
+                  <div className="flex items-center space-x-1 bg-zinc-950/80 border border-zinc-855 rounded-lg p-0.5 text-[10px] select-none">
+                    <span className="text-[9px] text-zinc-500 px-1 font-mono">Interval:</span>
+                    {([1000, 3000, 5000, 10000] as const).map(interval => (
+                      <button
+                        key={interval}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPollInterval(interval);
+                        }}
+                        className={`px-1.5 py-0.5 rounded cursor-pointer text-[9px] transition ${
+                          pollInterval === interval 
+                            ? 'bg-indigo-600/80 text-white font-semibold' 
+                            : 'text-zinc-500 hover:text-zinc-300'
+                        }`}
+                        title={`Query system temperature every ${interval / 1000} seconds`}
+                      >
+                        {interval / 1000}s
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-bold flex items-center space-x-2">
+                    <div className={`h-2 w-2 rounded-full ${stats.gpu_status.detected ? 'bg-indigo-400 animate-pulse' : 'bg-zinc-600'}`}></div>
+                    <span className="truncate max-w-[120px] text-zinc-200">{stats.gpu_status.detected ? 'QSV Active' : 'Software'}</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-zinc-400 bg-zinc-950/80 px-1.5 py-0.5 rounded border border-zinc-850/80">
+                    GPU: <span className="text-indigo-400 font-bold">{stats.gpu_status.temp}</span> | Util: <span className="text-indigo-400 font-bold">{stats.gpu_status.utilization}</span>
+                  </span>
+                </div>
+                <div className="text-[10px] text-zinc-500 mt-1 truncate max-w-[220px]" title={stats.gpu_status.name || ''}>
+                  {stats.gpu_status.name || 'No GPU passed'}
+                </div>
               </div>
-              <div className="text-sm font-bold flex items-center space-x-2">
-                <div className={`h-2.5 w-2.5 rounded-full ${stats.gpu_status.detected ? 'bg-indigo-400 animate-pulse' : 'bg-zinc-600'}`}></div>
-                <span className="truncate max-w-[150px]">{stats.gpu_status.detected ? 'Intel QuickSync Active' : 'Software Fallback'}</span>
+
+              {/* TEMPERATURE CHART */}
+              <div className="mt-3.5 relative bg-zinc-950/40 border border-zinc-850 rounded-lg p-2">
+                <svg
+                  viewBox="0 0 300 120"
+                  className="w-full h-[120px] overflow-visible select-none cursor-crosshair"
+                  onMouseMove={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const x = ((e.clientX - rect.left) / rect.width) * 300;
+                    setHoverX(x);
+                  }}
+                  onMouseLeave={() => setHoverX(null)}
+                >
+                  {/* Grid Lines */}
+                  <line x1="0" y1="110" x2="300" y2="110" stroke="#1f2937" strokeWidth="0.5" /> {/* 0C */}
+                  <line x1="0" y1="70" x2="300" y2="70" stroke="#1f2937" strokeWidth="0.5" strokeDasharray="3,3" /> {/* 40C */}
+                  <line x1="0" y1="50" x2="300" y2="50" stroke="#374151" strokeWidth="0.5" strokeDasharray="3,3" /> {/* 60C */}
+                  <line x1="0" y1="30" x2="300" y2="30" stroke="#4b5563" strokeWidth="0.5" strokeDasharray="3,3" /> {/* 80C */}
+                  <line x1="0" y1="10" x2="300" y2="10" stroke="#ef4444" strokeWidth="0.5" opacity="0.3" /> {/* 100C */}
+
+                  {/* Grid Labels */}
+                  <text x="295" y="68" fill="#4b5563" fontSize="8" textAnchor="end" fontFamily="monospace">40°C</text>
+                  <text x="295" y="48" fill="#6b7280" fontSize="8" textAnchor="end" fontFamily="monospace">60°C</text>
+                  <text x="295" y="28" fill="#9ca3af" fontSize="8" textAnchor="end" fontFamily="monospace">80°C</text>
+
+                  {/* Curves */}
+                  {Object.keys(visibleCurves).map(curveName => {
+                    if (!visibleCurves[curveName]) return null;
+
+                    const curvePoints = tempHistory
+                      .map(rec => {
+                        const x = 300 - (currentTime - rec.timestamp) / 1000;
+                        const val = rec.temps[curveName] || 0;
+                        const y = 110 - val; // Mapping Y
+                        return { x, y, value: val };
+                      })
+                      .filter(p => p.x >= -10 && p.x <= 310);
+
+                    return (
+                      <g key={curveName}>
+                        {curvePoints.map((p, idx) => {
+                          if (idx === 0) return null;
+                          const prev = curvePoints[idx - 1];
+                          const color = getTempColor(curveName, p.value);
+                          const isDimmed = hoveredCurve !== null && hoveredCurve !== curveName;
+                          return (
+                            <line
+                              key={idx}
+                              x1={prev.x}
+                              y1={prev.y}
+                              x2={p.x}
+                              y2={p.y}
+                              stroke={color}
+                              strokeWidth={hoveredCurve === curveName ? 2.5 : 1.25}
+                              opacity={isDimmed ? 0.12 : 0.85}
+                              className="transition-all duration-150"
+                            />
+                          );
+                        })}
+                      </g>
+                    );
+                  })}
+
+                  {/* Hover vertical line and tooltip */}
+                  {(() => {
+                    const closest = getClosestRecord();
+                    if (!closest) return null;
+
+                    return (
+                      <g>
+                        {/* Hover vertical line */}
+                        <line
+                          x1={closest.x}
+                          y1="5"
+                          x2={closest.x}
+                          y2="115"
+                          stroke="#6366f1"
+                          strokeWidth="1"
+                          strokeDasharray="2,2"
+                          opacity="0.8"
+                        />
+                        {/* Hover bullet indicators on each active line */}
+                        {Object.keys(visibleCurves).map(curveName => {
+                          if (!visibleCurves[curveName]) return null;
+                          const val = closest.record.temps[curveName];
+                          if (val === undefined) return null;
+                          const y = 110 - val;
+                          const color = getTempColor(curveName, val);
+                          return (
+                            <circle
+                              key={curveName}
+                              cx={closest.x}
+                              cy={y}
+                              r={hoveredCurve === curveName ? 3.5 : 2.5}
+                              fill={color}
+                              stroke="#000"
+                              strokeWidth="0.75"
+                              opacity={hoveredCurve !== null && hoveredCurve !== curveName ? 0.2 : 1}
+                            />
+                          );
+                        })}
+
+                        {/* Tooltip Box */}
+                        {(() => {
+                          const tooltipWidth = 105;
+                          const tooltipHeight = 12 + Object.values(visibleCurves).filter(Boolean).length * 9.5;
+                          const tooltipX = closest.x > 150 ? closest.x - tooltipWidth - 6 : closest.x + 6;
+                          const tooltipY = 8;
+
+                          // Calculate time elapsed
+                          const diffSec = Math.round((currentTime - closest.record.timestamp) / 1000);
+                          const timeStr = diffSec <= 0 ? "Live" : `${diffSec}s ago`;
+
+                          return (
+                            <g>
+                              {/* Background card with glassmorphism styling */}
+                              <rect
+                                x={tooltipX}
+                                y={tooltipY}
+                                width={tooltipWidth}
+                                height={tooltipHeight}
+                                rx="4"
+                                fill="#09090b"
+                                stroke="#27272a"
+                                strokeWidth="0.75"
+                                opacity="0.95"
+                              />
+                              {/* Header: timestamp */}
+                              <text
+                                x={tooltipX + 5}
+                                y={tooltipY + 9}
+                                fill="#71717a"
+                                fontSize="7"
+                                fontFamily="monospace"
+                                fontWeight="bold"
+                              >
+                                {timeStr}
+                              </text>
+                              {/* Temp items */}
+                              {Object.keys(visibleCurves)
+                                .filter(name => visibleCurves[name])
+                                .map((name, idx) => {
+                                  const val = closest.record.temps[name];
+                                  const color = getTempColor(name, val);
+                                  const itemY = tooltipY + 18.5 + idx * 9.5;
+                                  return (
+                                    <g key={name}>
+                                      {/* Indicator bullet */}
+                                      <circle cx={tooltipX + 8} cy={itemY - 2.5} r="2" fill={color} />
+                                      {/* Label */}
+                                      <text
+                                        x={tooltipX + 14}
+                                        y={itemY}
+                                        fill={hoveredCurve === name ? '#f4f4f5' : '#a1a1aa'}
+                                        fontSize="7.5"
+                                        fontFamily="sans-serif"
+                                      >
+                                        {name.split(' ')[0]}
+                                      </text>
+                                      {/* Temperature Value */}
+                                      <text
+                                        x={tooltipX + tooltipWidth - 6}
+                                        y={itemY}
+                                        fill={color}
+                                        fontSize="7.5"
+                                        fontWeight="bold"
+                                        fontFamily="monospace"
+                                        textAnchor="end"
+                                      >
+                                        {val.toFixed(1)}°
+                                      </text>
+                                    </g>
+                                  );
+                                })}
+                            </g>
+                          );
+                        })()}
+                      </g>
+                    );
+                  })()}
+                </svg>
               </div>
-              <div className="text-xs text-zinc-500 mt-1.5 truncate">{stats.gpu_status.name || 'No GPU passed'}</div>
+
+              {/* CURVE SELECTOR PILLS */}
+              <div className="mt-2.5 flex flex-wrap gap-1 justify-center select-none text-[9px] font-sans">
+                {Object.keys(visibleCurves).map(curveName => {
+                  const isVisible = visibleCurves[curveName];
+                  const currentVal = stats?.temperatures?.[curveName];
+                  const pillColor = currentVal !== undefined ? getTempColor(curveName, currentVal) : '#71717a';
+
+                  return (
+                    <button
+                      key={curveName}
+                      onMouseEnter={() => setHoveredCurve(curveName)}
+                      onMouseLeave={() => setHoveredCurve(null)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setVisibleCurves(prev => ({ ...prev, [curveName]: !prev[curveName] }));
+                      }}
+                      style={{ 
+                        borderColor: isVisible ? `${pillColor}50` : 'transparent',
+                        backgroundColor: isVisible ? `${pillColor}10` : 'transparent'
+                      }}
+                      className={`px-1.5 py-0.5 rounded-md border flex items-center space-x-1 cursor-pointer transition ${
+                        isVisible 
+                          ? 'text-zinc-200 font-semibold' 
+                          : 'text-zinc-600 hover:text-zinc-400 border-dashed border-zinc-800'
+                      }`}
+                    >
+                      <span 
+                        className="h-1.5 w-1.5 rounded-full" 
+                        style={{ backgroundColor: isVisible ? pillColor : '#3f3f46' }}
+                      ></span>
+                      <span>{curveName.split(' ')[0]}</span>
+                      {currentVal !== undefined && (
+                        <span className="font-mono font-bold text-[8px] opacity-80" style={{ color: pillColor }}>
+                          {currentVal.toFixed(0)}°
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}

@@ -97,6 +97,7 @@ export interface DashboardStats {
       started_at?: string;
     };
   };
+  temperatures?: { [key: string]: number };
   app_version?: string;
 }
 
