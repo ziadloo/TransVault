@@ -388,6 +388,7 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [scanning, setScanning] = useState(false);
   const [activeLogs, setActiveLogs] = useState<{ id: number; name: string; content: string } | null>(null);
+  const [blockingMessage, setBlockingMessage] = useState<string | null>(null);
   
   // Library filters
   const [libFilter, setLibFilter] = useState<string>('all');
@@ -591,11 +592,14 @@ function App() {
   };
 
   const handleReject = async (id: number) => {
+    setBlockingMessage('Restoring the original movie file from vault to your media library pool. This process requires copying files and may take some time depending on file size...');
     try {
       await api.rejectMovie(id);
-      fetchData();
+      await fetchData();
     } catch (err) {
       alert('Rejection failed');
+    } finally {
+      setBlockingMessage(null);
     }
   };
 
@@ -849,7 +853,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.16'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.17'}</span>
             </div>
           </div>
           
@@ -2302,6 +2306,46 @@ function App() {
                   <p><strong>Reject (Restore)</strong>: The transcoded file is discarded, and the original file is safely moved back from the vault to its original path in the library.</p>
                 </div>
               </section>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* BLOCKING OVERLAY FOR REJECTION RESTORE */}
+      {blockingMessage && (
+        <div 
+          className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-zinc-950/80 p-6 select-none"
+          style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <div className="relative flex flex-col items-center max-w-md w-full text-center">
+            {/* Visual rings/spinner layout */}
+            <div className="relative w-28 h-28 flex items-center justify-center mb-8">
+              {/* Outer pulsing ring */}
+              <div className="absolute inset-0 rounded-full border border-violet-500/30 animate-ping opacity-75"></div>
+              {/* Middle glowing/rotating ring */}
+              <div className="absolute inset-2 rounded-full border-2 border-t-violet-500 border-r-fuchsia-500 border-b-cyan-500 border-l-transparent animate-spin" style={{ animationDuration: '2s' }}></div>
+              {/* Inner container with icon */}
+              <div className="absolute inset-4 bg-zinc-900 border border-zinc-800 rounded-full shadow-inner flex items-center justify-center">
+                <RefreshCw className="h-7 w-7 text-violet-400 animate-spin" style={{ animationDuration: '4s' }} />
+              </div>
+            </div>
+            
+            {/* Text Information */}
+            <h3 className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-violet-400 via-fuchsia-400 to-cyan-400 tracking-tight">
+              Restoring Original Media
+            </h3>
+            
+            <p className="text-sm text-zinc-300 mt-3 font-medium px-4 leading-relaxed">
+              {blockingMessage}
+            </p>
+            
+            <div className="mt-6 flex items-center gap-1.5 text-xs text-zinc-500 bg-zinc-900/60 px-3.5 py-1.5 rounded-full border border-zinc-800/40">
+              <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-ping"></span>
+              <span>This may take a minute for large video files</span>
             </div>
           </div>
         </div>
