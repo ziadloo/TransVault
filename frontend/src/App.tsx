@@ -390,12 +390,13 @@ function App() {
   const [activeLogs, setActiveLogs] = useState<{ id: number; name: string; content: string } | null>(null);
   const [blockingMessage, setBlockingMessage] = useState<string | null>(null);
   const [approvalsSearchQuery, setApprovalsSearchQuery] = useState('');
+  const [selectedBulkProfileId, setSelectedBulkProfileId] = useState<string>('dynamic');
 
   // Bulk processing states
   const [bulkProcessing, setBulkProcessing] = useState(false);
   const [bulkTotal, setBulkTotal] = useState(0);
   const [bulkCurrent, setBulkCurrent] = useState(0);
-  const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | 'assign_profile' | 'queue' | 'skip' | 'reset' | null>(null);
   const [bulkMovieName, setBulkMovieName] = useState('');
   const [bulkCancelled, setBulkCancelled] = useState(false);
   const bulkCancelledRef = useRef(false);
@@ -643,6 +644,109 @@ function App() {
         }
       } catch (err) {
         console.error(`Bulk item ${targets[i].id} failed:`, err);
+      }
+    }
+
+    setBulkCurrent(targets.length);
+    
+    try {
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTimeout(() => {
+        setBulkProcessing(false);
+        setBulkAction(null);
+      }, 500);
+    }
+  };
+
+  const getBulkActionTitle = () => {
+    switch (bulkAction) {
+      case 'approve': return 'Bulk Approve';
+      case 'reject': return 'Bulk Reject & Restore';
+      case 'assign_profile': return 'Bulk Assign Profile';
+      case 'queue': return 'Bulk Queue Jobs';
+      case 'skip': return 'Bulk Skip Jobs';
+      case 'reset': return 'Bulk Reset Status';
+      default: return 'Bulk Action';
+    }
+  };
+
+  const getBulkBadgeColor = () => {
+    switch (bulkAction) {
+      case 'approve':
+      case 'queue':
+        return 'bg-emerald-500';
+      case 'assign_profile':
+        return 'bg-violet-500';
+      case 'skip':
+        return 'bg-amber-500';
+      case 'reject':
+      case 'reset':
+        return 'bg-rose-500';
+      default:
+        return 'bg-zinc-500';
+    }
+  };
+
+  const getBulkProgressGradient = () => {
+    switch (bulkAction) {
+      case 'approve':
+      case 'queue':
+        return 'from-emerald-500 to-teal-400';
+      case 'assign_profile':
+        return 'from-violet-500 to-indigo-400';
+      case 'skip':
+        return 'from-amber-500 to-yellow-450';
+      case 'reject':
+      case 'reset':
+        return 'from-rose-500 to-rose-450';
+      default:
+        return 'from-violet-500 to-fuchsia-500';
+    }
+  };
+
+  const handleLibraryBulkAction = async (action: 'assign_profile' | 'queue' | 'skip' | 'reset') => {
+    let targets = [...movies];
+    if (action === 'queue') {
+      targets = targets.filter(m => ['detected', 'skipped'].includes(m.status));
+    } else if (action === 'skip') {
+      targets = targets.filter(m => ['detected', 'queued', 'manual_matching'].includes(m.status));
+    } else if (action === 'reset') {
+      targets = targets.filter(m => ['transcoding', 'queued', 'manual_matching', 'skipped', 'pending_approval'].includes(m.status));
+    } else if (action === 'assign_profile') {
+      targets = targets.filter(m => ['detected', 'skipped', 'manual_matching'].includes(m.status));
+    }
+
+    if (targets.length === 0) return;
+
+    setBulkProcessing(true);
+    setBulkTotal(targets.length);
+    setBulkCurrent(0);
+    setBulkAction(action);
+    setBulkCancelled(false);
+    bulkCancelledRef.current = false;
+
+    for (let i = 0; i < targets.length; i++) {
+      if (bulkCancelledRef.current) {
+        break;
+      }
+      setBulkMovieName(targets[i].filename);
+      setBulkCurrent(i);
+      try {
+        if (action === 'queue') {
+          await api.queueMovie(targets[i].id);
+        } else if (action === 'skip') {
+          await api.skipMovie(targets[i].id);
+        } else if (action === 'reset') {
+          await api.resetMovie(targets[i].id);
+        } else if (action === 'assign_profile') {
+          const profileId = selectedBulkProfileId === 'dynamic' ? null : parseInt(selectedBulkProfileId);
+          await api.matchProfile(targets[i].id, profileId);
+        }
+      } catch (err) {
+        console.error(`Bulk library item ${targets[i].id} failed:`, err);
       }
     }
 
@@ -910,7 +1014,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.18'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.19'}</span>
             </div>
           </div>
           
@@ -1620,40 +1724,98 @@ function App() {
                   </div>
                 </div>
 
-                {/* Filter and Search Bar */}
-                <div className="bg-zinc-900/30 border border-zinc-800 rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                  <div className="flex flex-wrap gap-2">
-                    {[
-                      { filter: 'all', label: 'All Files' },
-                      { filter: 'detected', label: 'Detected' },
-                      { filter: 'queued', label: 'Queued' },
-                      { filter: 'transcoding', label: 'Transcoding' },
-                      { filter: 'pending_approval', label: 'Pending Approval' },
-                      { filter: 'approved', label: 'Approved' },
-                      { filter: 'manual_matching', label: 'Manual Match' },
-                      { filter: 'skipped', label: 'Skipped' },
-                    ].map(btn => (
-                      <button
-                        key={btn.filter}
-                        onClick={() => setLibFilter(btn.filter)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${
-                          libFilter === btn.filter 
-                            ? 'bg-zinc-800 text-white' 
-                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-900'
-                        }`}
+                {/* Search & Bulk Actions Bar */}
+                <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+                  {/* Left Section: Search & Status Dropdown & Profile Dropdown */}
+                  <div className="flex flex-col md:flex-row items-stretch md:items-center gap-3 flex-grow max-w-4xl">
+                    {/* Search Input */}
+                    <div className="relative flex-grow">
+                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-zinc-500" />
+                      </div>
+                      <input
+                        type="text"
+                        placeholder="Search movies by filename..."
+                        className="block w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs placeholder-zinc-500 focus:outline-none focus:border-violet-500/50 transition-all font-medium"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Status Select (Replaces buttons row) */}
+                    <div className="flex items-center gap-1.5 min-w-[150px]">
+                      <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider select-none whitespace-nowrap">Status:</span>
+                      <select
+                        value={libFilter}
+                        onChange={(e) => setLibFilter(e.target.value)}
+                        className="block w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-300 text-xs focus:outline-none focus:border-violet-500/50 transition-all font-medium cursor-pointer"
                       >
-                        {btn.label}
-                      </button>
-                    ))}
+                        <option value="all">All Files</option>
+                        <option value="detected">Detected</option>
+                        <option value="queued">Queued</option>
+                        <option value="transcoding">Transcoding</option>
+                        <option value="pending_approval">Pending Approval</option>
+                        <option value="approved">Approved</option>
+                        <option value="manual_matching">Manual Match</option>
+                        <option value="skipped">Skipped</option>
+                      </select>
+                    </div>
+
+                    {/* Profile Select for Bulk Assignment */}
+                    <div className="flex items-center gap-1.5 min-w-[180px]">
+                      <span className="text-zinc-500 text-[10px] font-bold uppercase tracking-wider select-none whitespace-nowrap">Profile:</span>
+                      <select
+                        value={selectedBulkProfileId}
+                        onChange={(e) => setSelectedBulkProfileId(e.target.value)}
+                        className="block w-full px-3 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-300 text-xs focus:outline-none focus:border-violet-500/50 transition-all font-medium cursor-pointer"
+                      >
+                        <option value="dynamic">Dynamic Search...</option>
+                        {profiles.filter(p => p.enabled).map(p => (
+                          <option key={p.id} value={p.id.toString()}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
 
-                  <input
-                    type="text"
-                    placeholder="Search movies by filename..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="bg-zinc-950 border border-zinc-850 rounded-xl px-4 py-2 text-xs focus:outline-none focus:border-violet-500 w-full md:max-w-xs text-zinc-200"
-                  />
+                  {/* Right Section: Bulk Actions Buttons */}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      onClick={() => handleLibraryBulkAction('assign_profile')}
+                      disabled={movies.length === 0}
+                      className="px-3.5 py-2 bg-violet-600/10 hover:bg-violet-600/20 text-violet-400 border border-violet-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Assign the selected profile to all matching movies"
+                    >
+                      <Sliders className="h-3.5 w-3.5" />
+                      <span>Assign Profile ({movies.length})</span>
+                    </button>
+                    <button
+                      onClick={() => handleLibraryBulkAction('queue')}
+                      disabled={!movies.some(m => ['detected', 'skipped'].includes(m.status))}
+                      className="px-3.5 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Queue all matching enqueuable movies"
+                    >
+                      <CheckCircle className="h-3.5 w-3.5" />
+                      <span>Queue ({movies.filter(m => ['detected', 'skipped'].includes(m.status)).length})</span>
+                    </button>
+                    <button
+                      onClick={() => handleLibraryBulkAction('skip')}
+                      disabled={!movies.some(m => ['detected', 'queued', 'manual_matching'].includes(m.status))}
+                      className="px-3.5 py-2 bg-amber-600/10 hover:bg-amber-600/20 text-amber-400 border border-amber-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Skip all matching enqueuable/queued movies"
+                    >
+                      <Clock className="h-3.5 w-3.5" />
+                      <span>Skip ({movies.filter(m => ['detected', 'queued', 'manual_matching'].includes(m.status)).length})</span>
+                    </button>
+                    <button
+                      onClick={() => handleLibraryBulkAction('reset')}
+                      disabled={!movies.some(m => ['transcoding', 'queued', 'manual_matching', 'skipped', 'pending_approval'].includes(m.status))}
+                      className="px-3.5 py-2 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="Reset all matching processing/skipped movies back to detected"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>Reset ({movies.filter(m => ['transcoding', 'queued', 'manual_matching', 'skipped', 'pending_approval'].includes(m.status)).length})</span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* Movie list table */}
@@ -2468,8 +2630,8 @@ function App() {
             {/* Action Title */}
             <div>
               <h3 className="text-lg font-extrabold text-zinc-100 flex items-center justify-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${bulkAction === 'approve' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500 animate-pulse'}`}></span>
-                <span>Bulk {bulkAction === 'approve' ? 'Approve' : 'Reject & Restore'} in Progress</span>
+                <span className={`h-2.5 w-2.5 rounded-full ${getBulkBadgeColor()} animate-pulse`}></span>
+                <span>{getBulkActionTitle()} in Progress</span>
               </h3>
               <p className="text-zinc-500 text-xs mt-1">
                 Processing {Math.min(bulkCurrent + 1, bulkTotal)} of {bulkTotal} items sequentially
@@ -2495,11 +2657,7 @@ function App() {
               
               <div className="w-full bg-zinc-950 rounded-full h-3 overflow-hidden border border-zinc-850 p-0.5">
                 <div 
-                  className={`h-full rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(139,92,246,0.3)] bg-gradient-to-r ${
-                    bulkAction === 'approve' 
-                      ? 'from-emerald-500 to-teal-400' 
-                      : 'from-rose-500 to-rose-450'
-                  }`}
+                  className={`h-full rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(139,92,246,0.3)] bg-gradient-to-r ${getBulkProgressGradient()}`}
                   style={{ width: `${(bulkCurrent / bulkTotal) * 100}%` }}
                 ></div>
               </div>
