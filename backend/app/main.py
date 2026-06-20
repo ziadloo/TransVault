@@ -16,7 +16,7 @@ from backend.app.schemas import (
     SettingResponse, SettingUpdate, DashboardStats, ProfileSuggestion
 )
 from backend.app.scheduler import init_scheduler, shutdown_scheduler, active_job, scan_library
-from backend.app.transcoder import approve_transcode, reject_transcode, stop_transcode, get_media_info, parse_media_metadata, check_if_transcode_needed
+from backend.app.transcoder import approve_transcode, reject_transcode, stop_transcode, get_media_info, parse_media_metadata, check_if_transcode_needed, is_manually_matched
 
 # Initialize logger
 logger = logging.getLogger("transvault.main")
@@ -157,7 +157,7 @@ def get_gpu_utilization(is_active: bool) -> str:
         return f"{random.randint(45, 85)}%"
     return "0%"
 
-app = FastAPI(title=settings.app_name, version="1.0.15")
+app = FastAPI(title=settings.app_name, version="1.0.16")
 
 # CORS middleware for development
 app.add_middleware(
@@ -426,7 +426,7 @@ def queue_movie(movie_id: int, db: Session = Depends(get_db)):
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
         
-    if movie.matched_profile and not movie.profile_matched_manually:
+    if movie.matched_profile and not is_manually_matched(movie, db):
         try:
             full_path = os.path.join(settings.library_dir, movie.relative_path)
             if os.path.exists(full_path):

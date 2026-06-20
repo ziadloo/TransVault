@@ -160,6 +160,28 @@ def find_closest_profile(db: Session, width: int, hdr_type: str) -> Optional[Pro
     matched_profiles.sort(key=lambda x: x[1])
     return matched_profiles[0][0]
 
+def is_manually_matched(movie: Movie, db: Session) -> bool:
+    """
+    Determines if a profile was manually matched.
+    Checks the explicit flag first, then falls back to a comparison heuristic 
+    for movies matched prior to the v1.0.15 database migration.
+    """
+    if movie.profile_matched_manually:
+        return True
+        
+    if movie.matched_profile_id is not None:
+        try:
+            width = 1920
+            if movie.resolution and "x" in movie.resolution:
+                width = int(movie.resolution.split("x")[0])
+            auto_profile = find_closest_profile(db, width, movie.hdr_type)
+            if auto_profile and auto_profile.id != movie.matched_profile_id:
+                return True
+        except Exception:
+            pass
+            
+    return False
+
 def check_if_transcode_needed(media_info: dict, profile: Profile, filename: str) -> bool:
     """
     Checks if transcoding is actually needed for a given file and profile.
@@ -417,7 +439,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
             db.commit()
             
         # Check if transcoding is actually needed
-        if not movie.profile_matched_manually and not check_if_transcode_needed(media_metadata, profile, movie.filename):
+        if not is_manually_matched(movie, db) and not check_if_transcode_needed(media_metadata, profile, movie.filename):
             logger.info(f"Skipping transcode for {movie.filename} (already matches profile output settings)")
             movie.status = "skipped"
             movie.transcode_started_at = None
