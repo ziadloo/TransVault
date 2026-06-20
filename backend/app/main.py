@@ -157,7 +157,7 @@ def get_gpu_utilization(is_active: bool) -> str:
         return f"{random.randint(45, 85)}%"
     return "0%"
 
-app = FastAPI(title=settings.app_name, version="1.0.17")
+app = FastAPI(title=settings.app_name, version="1.0.18")
 
 # CORS middleware for development
 app.add_middleware(

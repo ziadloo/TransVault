@@ -1,9 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Film, CheckCircle, XCircle, Settings, Database, HardDrive, Cpu, 
   RefreshCw, Trash2, Plus, Clock, FileText, ChevronRight, Check,
   ArrowRight, Sliders, AlertCircle, Download, Loader2, Edit, Power,
-  BookOpen, X
+  BookOpen, X, Search
 } from 'lucide-react';
 import { api } from './api';
 import type { Movie, Profile, DashboardStats, Setting, ProfileSuggestion } from './api';
@@ -389,6 +389,16 @@ function App() {
   const [scanning, setScanning] = useState(false);
   const [activeLogs, setActiveLogs] = useState<{ id: number; name: string; content: string } | null>(null);
   const [blockingMessage, setBlockingMessage] = useState<string | null>(null);
+  const [approvalsSearchQuery, setApprovalsSearchQuery] = useState('');
+
+  // Bulk processing states
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkTotal, setBulkTotal] = useState(0);
+  const [bulkCurrent, setBulkCurrent] = useState(0);
+  const [bulkAction, setBulkAction] = useState<'approve' | 'reject' | null>(null);
+  const [bulkMovieName, setBulkMovieName] = useState('');
+  const [bulkCancelled, setBulkCancelled] = useState(false);
+  const bulkCancelledRef = useRef(false);
   
   // Library filters
   const [libFilter, setLibFilter] = useState<string>('all');
@@ -430,6 +440,11 @@ function App() {
     min_free_gb: 50
   });
   const [queueHalted, setQueueHalted] = useState(false);
+
+  const filteredApprovals = pendingApprovals.filter(movie => 
+    movie.filename.toLowerCase().includes(approvalsSearchQuery.toLowerCase()) ||
+    movie.relative_path.toLowerCase().includes(approvalsSearchQuery.toLowerCase())
+  );
 
   // Load everything on startup
   const fetchData = async () => {
@@ -600,6 +615,48 @@ function App() {
       alert('Rejection failed');
     } finally {
       setBlockingMessage(null);
+    }
+  };
+
+  const handleBulkAction = async (action: 'approve' | 'reject') => {
+    const targets = [...filteredApprovals];
+    if (targets.length === 0) return;
+
+    setBulkProcessing(true);
+    setBulkTotal(targets.length);
+    setBulkCurrent(0);
+    setBulkAction(action);
+    setBulkCancelled(false);
+    bulkCancelledRef.current = false;
+
+    for (let i = 0; i < targets.length; i++) {
+      if (bulkCancelledRef.current) {
+        break;
+      }
+      setBulkMovieName(targets[i].filename);
+      setBulkCurrent(i);
+      try {
+        if (action === 'approve') {
+          await api.approveMovie(targets[i].id);
+        } else {
+          await api.rejectMovie(targets[i].id);
+        }
+      } catch (err) {
+        console.error(`Bulk item ${targets[i].id} failed:`, err);
+      }
+    }
+
+    setBulkCurrent(targets.length);
+    
+    try {
+      await fetchData();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTimeout(() => {
+        setBulkProcessing(false);
+        setBulkAction(null);
+      }, 500);
     }
   };
 
@@ -853,7 +910,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.17'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.18'}</span>
             </div>
           </div>
           
@@ -1473,9 +1530,46 @@ function App() {
                   </p>
                 </div>
 
+                {/* Search & Bulk Actions Bar */}
+                <div className="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  {/* Search Input */}
+                  <div className="relative flex-grow max-w-md">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Search className="h-4 w-4 text-zinc-500" />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Search pending approvals..."
+                      className="block w-full pl-9 pr-4 py-2 bg-zinc-950 border border-zinc-800 rounded-xl text-zinc-200 text-xs placeholder-zinc-500 focus:outline-none focus:border-violet-500/50 transition-all font-medium"
+                      value={approvalsSearchQuery}
+                      onChange={(e) => setApprovalsSearchQuery(e.target.value)}
+                    />
+                  </div>
+
+                  {/* Bulk Buttons */}
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => handleBulkAction('approve')}
+                      disabled={filteredApprovals.length === 0}
+                      className="px-4 py-2 bg-emerald-600/10 hover:bg-emerald-600/20 text-emerald-400 border border-emerald-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <CheckCircle className="h-4 w-4" />
+                      <span>Approve All ({filteredApprovals.length})</span>
+                    </button>
+                    <button
+                      onClick={() => handleBulkAction('reject')}
+                      disabled={filteredApprovals.length === 0}
+                      className="px-4 py-2 bg-rose-600/10 hover:bg-rose-600/20 text-rose-400 border border-rose-500/20 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <XCircle className="h-4 w-4" />
+                      <span>Reject All ({filteredApprovals.length})</span>
+                    </button>
+                  </div>
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {movies.length > 0 ? (
-                    movies.map(movie => (
+                  {filteredApprovals.length > 0 ? (
+                    filteredApprovals.map(movie => (
                       <ApprovalCard
                         key={movie.id}
                         movie={movie}
@@ -1488,8 +1582,17 @@ function App() {
                   ) : (
                     <div className="col-span-2 border border-zinc-800 border-dashed rounded-2xl py-16 text-center">
                       <CheckCircle className="h-10 w-10 text-zinc-700 mx-auto mb-3" />
-                      <h3 className="font-extrabold text-zinc-400 text-md">Vault Staging is Empty</h3>
-                      <p className="text-zinc-500 text-xs mt-1">Transcoded movies will show up here for validation before deleting originals.</p>
+                      {pendingApprovals.length > 0 ? (
+                        <>
+                          <h3 className="font-extrabold text-zinc-400 text-md">No Matching Approvals</h3>
+                          <p className="text-zinc-500 text-xs mt-1">Try adjusting your search terms.</p>
+                        </>
+                      ) : (
+                        <>
+                          <h3 className="font-extrabold text-zinc-400 text-md">Vault Staging is Empty</h3>
+                          <p className="text-zinc-500 text-xs mt-1">Transcoded movies will show up here for validation before deleting originals.</p>
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2347,6 +2450,86 @@ function App() {
               <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-ping"></span>
               <span>This may take a minute for large video files</span>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* BULK PROCESS BLOCKED OVERLAY */}
+      {bulkProcessing && (
+        <div 
+          className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-zinc-950/85 p-6 select-none"
+          style={{ backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+          <div className="relative bg-zinc-900 border border-zinc-800 rounded-2xl p-8 max-w-lg w-full shadow-2xl flex flex-col items-center text-center space-y-6">
+            {/* Action Title */}
+            <div>
+              <h3 className="text-lg font-extrabold text-zinc-100 flex items-center justify-center gap-2">
+                <span className={`h-2.5 w-2.5 rounded-full ${bulkAction === 'approve' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500 animate-pulse'}`}></span>
+                <span>Bulk {bulkAction === 'approve' ? 'Approve' : 'Reject & Restore'} in Progress</span>
+              </h3>
+              <p className="text-zinc-500 text-xs mt-1">
+                Processing {Math.min(bulkCurrent + 1, bulkTotal)} of {bulkTotal} items sequentially
+              </p>
+            </div>
+
+            {/* Current Item Name */}
+            <div className="w-full bg-zinc-950/60 border border-zinc-800/80 rounded-xl p-4">
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-wider">Current Movie</p>
+              <p className="text-sm font-semibold text-zinc-200 truncate mt-1" title={bulkMovieName}>
+                {bulkMovieName || 'Initializing...'}
+              </p>
+            </div>
+
+            {/* Progress Bar Container */}
+            <div className="w-full space-y-2">
+              <div className="flex items-center justify-between text-xs font-mono text-zinc-400">
+                <span>Progress</span>
+                <span className="font-semibold text-violet-400">
+                  {Math.round((bulkCurrent / bulkTotal) * 100)}%
+                </span>
+              </div>
+              
+              <div className="w-full bg-zinc-950 rounded-full h-3 overflow-hidden border border-zinc-850 p-0.5">
+                <div 
+                  className={`h-full rounded-full transition-all duration-300 shadow-[0_0_8px_rgba(139,92,246,0.3)] bg-gradient-to-r ${
+                    bulkAction === 'approve' 
+                      ? 'from-emerald-500 to-teal-400' 
+                      : 'from-rose-500 to-rose-450'
+                  }`}
+                  style={{ width: `${(bulkCurrent / bulkTotal) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+
+            {/* Cancel Button */}
+            <button
+              onClick={() => {
+                bulkCancelledRef.current = true;
+                setBulkCancelled(true);
+              }}
+              disabled={bulkCancelled}
+              className={`w-full py-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 cursor-pointer ${
+                bulkCancelled 
+                  ? 'bg-zinc-850 text-zinc-500 cursor-not-allowed' 
+                  : 'bg-zinc-800 hover:bg-zinc-750 text-zinc-200 border border-zinc-700/60'
+              }`}
+            >
+              {bulkCancelled ? (
+                <>
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  <span>Cancelling remaining items...</span>
+                </>
+              ) : (
+                <>
+                  <X className="h-3.5 w-3.5" />
+                  <span>Cancel Remaining Operations</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       )}
