@@ -25,6 +25,21 @@ logging.basicConfig(level=logging.INFO)
 # Create tables
 Base.metadata.create_all(bind=engine)
 
+# Database migration: Add profile_matched_manually if it does not exist
+try:
+    from sqlalchemy import text
+    db_mig = SessionLocal()
+    db_mig.execute(text("ALTER TABLE movies ADD COLUMN profile_matched_manually BOOLEAN DEFAULT 0;"))
+    db_mig.commit()
+    logger.info("Database migration: Added profile_matched_manually column.")
+except Exception:
+    pass
+finally:
+    try:
+        db_mig.close()
+    except Exception:
+        pass
+
 def has_intel_gpu() -> bool:
     import glob
     for path in glob.glob("/sys/class/drm/card*/device/vendor") + glob.glob("/sys/class/drm/renderD*/device/vendor"):
@@ -142,7 +157,7 @@ def get_gpu_utilization(is_active: bool) -> str:
         return f"{random.randint(45, 85)}%"
     return "0%"
 
-app = FastAPI(title=settings.app_name, version="1.0.14")
+app = FastAPI(title=settings.app_name, version="1.0.15")
 
 # CORS middleware for development
 app.add_middleware(
@@ -411,7 +426,7 @@ def queue_movie(movie_id: int, db: Session = Depends(get_db)):
     if not movie:
         raise HTTPException(status_code=404, detail="Movie not found")
         
-    if movie.matched_profile:
+    if movie.matched_profile and not movie.profile_matched_manually:
         try:
             full_path = os.path.join(settings.library_dir, movie.relative_path)
             if os.path.exists(full_path):
@@ -470,25 +485,15 @@ def match_profile_manually(movie_id: int, profile_id: Optional[int] = Query(None
         
     if profile_id is None or profile_id == 0:
         movie.matched_profile_id = None
+        movie.profile_matched_manually = False
         movie.status = "detected"
     else:
         profile = db.query(Profile).filter(Profile.id == profile_id).first()
         if not profile:
             raise HTTPException(status_code=404, detail="Profile not found")
         movie.matched_profile_id = profile.id
-        
-        try:
-            full_path = os.path.join(settings.library_dir, movie.relative_path)
-            if os.path.exists(full_path):
-                info = get_media_info(full_path)
-                meta = parse_media_metadata(info)
-                if not check_if_transcode_needed(meta, profile, movie.filename):
-                    movie.status = "skipped"
-                else:
-                    movie.status = "detected"
-        except Exception as e:
-            logger.error(f"Error checking if transcode is needed for manual match of movie {movie_id}: {e}")
-            movie.status = "detected"
+        movie.profile_matched_manually = True
+        movie.status = "detected"
         
     db.commit()
     return {"message": "Profile matched successfully."}

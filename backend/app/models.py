@@ -19,6 +19,7 @@ class Movie(Base):
     
     matched_profile_id = Column(Integer, ForeignKey("profiles.id"), nullable=True)
     matched_profile = relationship("Profile", back_populates="movies")
+    profile_matched_manually = Column(Boolean, default=False, server_default="0")
     
     transcoded_size = Column(BigInteger, nullable=True)
     transcode_duration = Column(Integer, nullable=True)  # in seconds

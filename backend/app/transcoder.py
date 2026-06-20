@@ -417,7 +417,7 @@ def run_transcode(db: Session, movie_id: int, progress_callback=None):
             db.commit()
             
         # Check if transcoding is actually needed
-        if not check_if_transcode_needed(media_metadata, profile, movie.filename):
+        if not movie.profile_matched_manually and not check_if_transcode_needed(media_metadata, profile, movie.filename):
             logger.info(f"Skipping transcode for {movie.filename} (already matches profile output settings)")
             movie.status = "skipped"
             movie.transcode_started_at = None

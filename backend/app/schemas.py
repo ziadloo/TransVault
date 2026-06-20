@@ -80,6 +80,7 @@ class MovieResponse(BaseModel):
     transcode_started_at: Optional[datetime] = None
     transcode_completed_at: Optional[datetime] = None
     error_message: Optional[str] = None
+    profile_matched_manually: bool = False
     added_at: datetime
     updated_at: datetime
 

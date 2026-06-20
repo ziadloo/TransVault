@@ -70,6 +70,7 @@ export interface Movie {
   transcode_started_at?: string;
   transcode_completed_at?: string;
   error_message?: string;
+  profile_matched_manually?: boolean;
   added_at: string;
   updated_at: string;
 }
