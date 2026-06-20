@@ -363,8 +363,8 @@ function App() {
     let minDiff = Infinity;
 
     tempHistory.forEach(rec => {
-      const recX = 300 - (currentTime - rec.timestamp) / 1000;
-      if (recX >= 0 && recX <= 300) {
+      const recX = chartWidth - ((currentTime - rec.timestamp) / 300000) * chartWidth;
+      if (recX >= 0 && recX <= chartWidth) {
         const diff = Math.abs(recX - hoverX);
         if (diff < minDiff) {
           minDiff = diff;
@@ -400,6 +400,21 @@ function App() {
   const [bulkMovieName, setBulkMovieName] = useState('');
   const [bulkCancelled, setBulkCancelled] = useState(false);
   const bulkCancelledRef = useRef(false);
+  const [chartWidth, setChartWidth] = useState(600);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        // Exclude container padding (2.5 = 10px on each side)
+        const width = Math.max(100, entry.contentRect.width - 20);
+        setChartWidth(width);
+      }
+    });
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
   
   // Library filters
   const [libFilter, setLibFilter] = useState<string>('all');
@@ -1014,7 +1029,7 @@ function App() {
               <span className="font-extrabold text-xl tracking-tight bg-gradient-to-r from-violet-400 to-indigo-200 bg-clip-text text-transparent">
                 TransVault
               </span>
-              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.20'}</span>
+              <span className="text-[10px] font-medium bg-zinc-800 text-zinc-400 px-1.5 py-0.5 rounded-md ml-2 border border-zinc-700">v{stats?.app_version || '1.0.21'}</span>
             </div>
           </div>
           
@@ -1282,35 +1297,36 @@ function App() {
 
                 {/* SYSTEM DIAGNOSTICS & TEMPERATURE CHART */}
                 <div className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-5 hover:border-zinc-700/60 transition-all flex flex-col justify-between">
-                  <div className="flex items-center justify-between text-zinc-500 mb-4 pb-2.5 border-b border-zinc-850/30">
+                  <div className="flex items-center justify-between text-zinc-500 mb-4 pb-2.5 border-b border-zinc-800/25">
                     <div className="flex items-center space-x-2">
                       <Cpu className="h-4 w-4 text-indigo-400" />
                       <span className="text-xs uppercase tracking-wider font-semibold text-zinc-300">System Temperature History</span>
                     </div>
                   </div>
 
-                  <div className="relative bg-zinc-950/40 border border-zinc-850 rounded-lg p-2.5">
+                  <div ref={containerRef} className="relative bg-zinc-950/40 border border-zinc-800/15 rounded-lg p-2.5">
                     <svg
-                      viewBox="0 0 300 120"
+                      viewBox={`0 0 ${chartWidth} 120`}
+                      preserveAspectRatio="none"
                       className="w-full h-[140px] overflow-visible select-none cursor-crosshair"
                       onMouseMove={(e) => {
                         const rect = e.currentTarget.getBoundingClientRect();
-                        const x = ((e.clientX - rect.left) / rect.width) * 300;
+                        const x = ((e.clientX - rect.left) / rect.width) * chartWidth;
                         setHoverX(x);
                       }}
                       onMouseLeave={() => setHoverX(null)}
                     >
                       {/* Grid Lines */}
-                      <line x1="0" y1="110" x2="300" y2="110" stroke="#1f2937" strokeWidth="0.5" />
-                      <line x1="0" y1="70" x2="300" y2="70" stroke="#1f2937" strokeWidth="0.5" strokeDasharray="3,3" />
-                      <line x1="0" y1="50" x2="300" y2="50" stroke="#374151" strokeWidth="0.5" strokeDasharray="3,3" />
-                      <line x1="0" y1="30" x2="300" y2="30" stroke="#4b5563" strokeWidth="0.5" strokeDasharray="3,3" />
-                      <line x1="0" y1="10" x2="300" y2="10" stroke="#ef4444" strokeWidth="0.5" opacity="0.3" />
+                      <line x1="0" y1="110" x2={chartWidth} y2="110" stroke="#1f2937" strokeWidth="0.5" />
+                      <line x1="0" y1="70" x2={chartWidth} y2="70" stroke="#1f2937" strokeWidth="0.5" strokeDasharray="3,3" />
+                      <line x1="0" y1="50" x2={chartWidth} y2="50" stroke="#374151" strokeWidth="0.5" strokeDasharray="3,3" />
+                      <line x1="0" y1="30" x2={chartWidth} y2="30" stroke="#4b5563" strokeWidth="0.5" strokeDasharray="3,3" />
+                      <line x1="0" y1="10" x2={chartWidth} y2="10" stroke="#ef4444" strokeWidth="0.5" opacity="0.3" />
 
                       {/* Grid Labels */}
-                      <text x="295" y="68" fill="#4b5563" fontSize="8" textAnchor="end" fontFamily="monospace">40°C</text>
-                      <text x="295" y="48" fill="#6b7280" fontSize="8" textAnchor="end" fontFamily="monospace">60°C</text>
-                      <text x="295" y="28" fill="#9ca3af" fontSize="8" textAnchor="end" fontFamily="monospace">80°C</text>
+                      <text x={chartWidth - 5} y="68" fill="#4b5563" fontSize="8" textAnchor="end" fontFamily="monospace">40°C</text>
+                      <text x={chartWidth - 5} y="48" fill="#6b7280" fontSize="8" textAnchor="end" fontFamily="monospace">60°C</text>
+                      <text x={chartWidth - 5} y="28" fill="#9ca3af" fontSize="8" textAnchor="end" fontFamily="monospace">80°C</text>
 
                       {/* Curves */}
                       {Object.keys(visibleCurves).map(curveName => {
@@ -1318,12 +1334,12 @@ function App() {
 
                         const curvePoints = tempHistory
                           .map(rec => {
-                            const x = 300 - (currentTime - rec.timestamp) / 1000;
+                            const x = chartWidth - ((currentTime - rec.timestamp) / 300000) * chartWidth;
                             const val = rec.temps[curveName] || 0;
                             const y = 110 - val;
                             return { x, y, value: val };
                           })
-                          .filter(p => p.x >= -10 && p.x <= 310);
+                          .filter(p => p.x >= -10 && p.x <= chartWidth + 10);
 
                         return (
                           <g key={curveName}>
@@ -1391,7 +1407,7 @@ function App() {
                             {(() => {
                               const tooltipWidth = 105;
                               const tooltipHeight = 12 + Object.values(visibleCurves).filter(Boolean).length * 9.5;
-                              const tooltipX = closest.x > 150 ? closest.x - tooltipWidth - 6 : closest.x + 6;
+                              const tooltipX = closest.x > chartWidth / 2 ? closest.x - tooltipWidth - 6 : closest.x + 6;
                               const tooltipY = 8;
 
                               const diffSec = Math.round((currentTime - closest.record.timestamp) / 1000);
@@ -1462,7 +1478,7 @@ function App() {
                   </div>
 
                   {/* Same Level Legend & Poll Speed Selector */}
-                  <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-850/30 pt-3.5 select-none text-[9px] font-sans">
+                  <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 border-t border-zinc-800/10 pt-3.5 select-none text-[9px] font-sans">
                     {/* CURVE SELECTOR PILLS */}
                     <div className="flex flex-wrap gap-1.5 justify-center sm:justify-start">
                       {Object.keys(visibleCurves).map(curveName => {
@@ -1476,8 +1492,8 @@ function App() {
                             onMouseEnter={() => setHoveredCurve(curveName)}
                             onMouseLeave={() => setHoveredCurve(null)}
                             onClick={(e) => {
-                              e.stopPropagation();
-                              setVisibleCurves(prev => ({ ...prev, [curveName]: !prev[curveName] }));
+                                e.stopPropagation();
+                                setVisibleCurves(prev => ({ ...prev, [curveName]: !prev[curveName] }));
                             }}
                             style={{ 
                               borderColor: isVisible ? `${pillColor}50` : 'transparent',
@@ -1505,7 +1521,7 @@ function App() {
                     </div>
 
                     {/* Poll Speed Selector */}
-                    <div className="flex items-center space-x-1 bg-zinc-950/80 border border-zinc-855 rounded-lg p-0.5 text-[10px] shrink-0 self-end sm:self-auto">
+                    <div className="flex items-center space-x-1 bg-zinc-950/80 border border-zinc-800/15 rounded-lg p-0.5 text-[10px] shrink-0 self-end sm:self-auto">
                       <span className="text-[9px] text-zinc-500 px-1.5 font-mono">Interval:</span>
                       {([1000, 3000, 5000, 10000] as const).map(interval => (
                         <button
